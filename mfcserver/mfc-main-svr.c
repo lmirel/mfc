@@ -1149,7 +1149,6 @@ int main (int argc, char **argv)
       {
         if(fds[i].revents & POLLIN || fds[i].revents & POLLPRI || fds[i].revents & POLLOUT || fds[i].revents & POLLHUP)
         {
-          //if (1||/*mtime < 2 || */(rtime % 100) == 0)
           if ((rkntr % 500) == 0)
             printf ("\n#i:poll %dfds:%s:%d@%lums/%lusec, %d/%d pkts(evt/drop)", (int)poll_i, fds[i].revents & POLLIN?"in":"out", fds[i].fd,
                 mtime, rtime / 1000, rkntr, rkdrop);
@@ -1272,11 +1271,11 @@ int main (int argc, char **argv)
                 else
                 {
                   rkdrop++;
-                  if (1||_odbg > 1)
+                  if (_odbg > 1)
                   {
                     printf ("\n#w@%04d:drop early pkt %d type 0x%02x", mms, rkdrop, pkt[MFC_PIDOF]);
                     int *_cpkt = pkt;
-                    if (1||_odbg > 2)
+                    if (_odbg > 2)
                       printf ("\n#w.roll:% 6d (r: % 5d / s: % 5d) | pitch: % 6d \t(p: % 5d / s: % 5d / h: % 5d)",
                         _cpkt[MFC_PIROLL] + _cpkt[MFC_PISWAY], _cpkt[MFC_PIROLL], _cpkt[MFC_PISWAY],
                         _cpkt[MFC_PIPITCH] + _cpkt[MFC_PISURGE] + _cpkt[MFC_PIHEAVE],

@@ -263,8 +263,8 @@ int scn_get_crc (char *pl)
  */
 int hex2int (char *hex) 
 {
-    int val = 0;
-    for (int i = 0; i < 8; i++) {
+    int val = 0, i;
+    for (i = 0; i < 8; i++) {
         // get current character then increment
         char byte = *hex++; 
         // transform hex character to the 4bit equivalent number, using the ascii table indexes
@@ -284,8 +284,8 @@ int hex2int (char *hex)
  */
 int hex2byte (char *hex) 
 {
-    int val = 0;
-    for (int i = 0; i < 2; i++) {
+    int val = 0, i;
+    for (i = 0; i < 2; i++) {
         // get current character then increment
         char byte = *hex++; 
         // transform hex character to the 4bit equivalent number, using the ascii table indexes

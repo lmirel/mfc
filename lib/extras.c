@@ -280,56 +280,9 @@ void mfc_bcast_close ()
   mfc_bcast_sock = -1;
 }
 
- //x-sim 2.x and 3.x
-// Memory map of buffer sent via network
-//
-// integer   function
-// 0-6   Joystick axis
-// 7-166   40 data of Yoda  4 Bytes per value: 1=active 2=data 3=play 4=type
-// 87-166  20 data of plugin 4 bytes per value: 1=1 2=data 3=1 4=99
-// 7-166   40 overwrite positions for force injector / only if needed
-// 167-174 8 integer with joy button value
-// 175   autostart trigger
-// 176-218   43 extended gauge data (only x-sim 2 and up)
-//This means integer 175, is far I know it may be inverted?
-//This is a inrace detection, there maybe a difference to the ingame time.
-//A integer has 4 bytes. Some my be used multible.
-//There maybe a change that enlarge the packet in one of the next versions but will not change the front area
-typedef struct sEvtPacket {
-  int joystick[7];
-  int plugin[40][4];  //might need additional byte from auxdata
-  //int yoda[40];     //might need additional byte from auxdata
-  //int plugin[20];   //might need additional byte from auxdata
-  //int forceinjector[40];
-  //
-  //int auxdata[60];
-  //
-  int joybutton[8];
-  int autostart;
-  int gaugedata[43];
-  //
-  int padding[1];
-} SEvtPacket;
-
-typedef enum eGaugeData
-{
-  gSpeed = 0,
-  gRpm,
-  gFuel,
-  gFuelTemp,
-  gGear,
-  gLapNumber,
-  gBestLapTime,
-  gLastLapTime,
-  gPosition,
-  gWaterTemp,
-  gFlags,
-  gTimeStamp
-} EGaugeData;
 
 int bcast_sock = -1;
 struct sockaddr_in si_other;
-SEvtPacket pkt = {0};
 void bcast_prep (char *dst)
 {
   //sockets
@@ -375,11 +328,9 @@ void bcast_prep (char *dst)
   }
 #endif
   bcast_sock = s;
-  pkt.gaugedata[gFlags] = -1;
-  pkt.gaugedata[gGear] = 0;
-  pkt.gaugedata[gRpm] = -1;
 }
 
+#if 0
 void bcast_send ()
 {
 #if 1
@@ -391,175 +342,12 @@ void bcast_send ()
   //    printf ("%d .pkt %d sent\n", pkt.gaugedata[gTimeStamp], pktk);
 #endif
 }
+#endif
 
 void bcast_close ()
 {
   if (bcast_sock > 0)
     close (bcast_sock);
-}
-
-/*
- * serial led control
- */
-int _maxg = 6;
-
-int opt_gear_max (int g)
-{
-  static int mlg = 0;
-  char cg = 0;
-  if (g == 0 && mlg == -1)
-  {
-    _maxg--;
-    cg++;
-  }
-  if (g == 0 && mlg == 1)
-  {
-    _maxg++;
-    cg++;
-  }
-  mlg = g;
-  return cg;
-}
-
-void s7led_gear_max (int g)
-{
-  if (opt_gear_max (g))
-  {
-    char cgear[5];
-    snprintf (cgear, 4, "m%2d", _maxg);
-    s7ledS_send (cgear);
-    //
-    bcast_send ();
-  }
-}
-
-static int opt_gear (int g);
-void s7led_gear (int g)
-{
-  char cgear[15] = {0x79, 3, };
-  switch (opt_gear_get())
-  {
-    case 0:
-      snprintf (cgear+2, 4, "n");
-      break;
-    case -1:
-      snprintf (cgear+2, 4, "r");
-      break;
-    default:
-      snprintf (cgear+2, 4, "%1d", opt_gear_get());
-  }
-  s7ledS_sendCmd (cgear, 3);
-  //s7ledS_send (cgear);
-}
-
-static int opt_gear (int g)
-{
-  static int mgear = 0;
-  static int lg = 0;
-  char cg = 0;
-  if (g == 0 && lg == -1)
-  {
-    if (mgear > -1)
-      mgear--;
-    cg++;
-  }
-  if (g == 0 && lg == 1)
-  {
-    if (mgear < _maxg)
-      mgear++;
-    cg++;
-  }
-  lg = g;
-  if (cg)
-  {
-    pkt.gaugedata[gGear] = mgear;
-    s7led_gear (mgear);
-  }
-  return cg;
-}
-
-int opt_gear_get ()
-{
-  return pkt.gaugedata[gGear];
-}
-
-int opt_gear_max_get ()
-{
-  return _maxg;
-}
-
-int opt_rpm_set (int rpm)
-{
-  char rc = 0;
-  if (pkt.gaugedata[gRpm] != rpm)
-    rc ++;
-  pkt.gaugedata[gRpm] = rpm;
-  if (rc)
-  {
-    switch (rpm)
-    {
-      default:
-        s7ledS_send ("  ");
-        break;
-      case 1:
-        s7ledS_send ("__");
-        break;
-      case 2:
-        s7ledS_send ("o ");
-        break;
-      case 3:
-        s7ledS_send ("oo");
-        break;
-      case 4:
-        s7ledS_send ("Oo");
-        break;
-      case 5:
-        s7ledS_send ("OO");
-        break;
-    }
-    bcast_send ();
-  }
-  //printf ("\n#RPM %d", pkt.gaugedata[gRpm]);
-  return rpm;
-}
-
-int opt_rpm_get ()
-{
-  return pkt.gaugedata[gRpm];
-}
-
-int opt_gear_up ()
-{
-  return opt_gear (1);
-  //printf ("\n#gear UP");
-}
-
-int opt_gear_dn ()
-{
-  return opt_gear (-1);
-  //printf ("\n#gear DN");
-}
-
-int opt_gear_ready ()
-{
-  opt_gear (0);
-  bcast_send ();
-  return 1;
-}
-
-int opt_gear_max_up ()
-{
-  return opt_gear_max (1);
-}
-
-int opt_gear_max_dn ()
-{
-  return opt_gear_max (-1);
-}
-
-int opt_gear_max_ready ()
-{
-  return opt_gear_max (0);
 }
 
 long get_map (long x, long in_min, long in_max, long out_min, long out_max)

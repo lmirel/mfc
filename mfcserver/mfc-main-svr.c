@@ -3,32 +3,6 @@
  License: GPLv3
  */
 
-/* Linux
- *
- * build:
-gcc -o /opt/server-mfc mfc-main-svr.c shared/scn_adapter.c shared/extras.c -lusb-1.0 -std=c11
-
-gcc -o /opt/server-mfc mfc-main-svr.c -DBKEY=`cat /sys/block/mmcblk0/device/serial` -DBUSR=\"`whoami`\" shared/scn_adapter.c shared/extras.c -lusb-1.0 -std=c11 -lpigpio
-
-gcc -o /opt/server-mfc mfc-main-svr.c -DBKEYE -DBKEY=`cat /sys/block/mmcblk0/device/serial` -DBUSR=\"`whoami`\" shared/scn_adapter.c shared/extras.c shared/smtp-ssl.c -lcurl -lusb-1.0 -std=c11 -lpigpio
-
-gcc -o /opt/server-mfc mfc-main-svr.c -DBKEY=0xdeadbeef -DBUSR=\"`whoami`\" shared/scn_adapter.c shared/extras.c shared/smtp-ssl.c -lcurl -lusb-1.0 -std=c11
-
-gcc -o /opt/server-mfc mfc-main-svr.c shared/scn_adapter.c shared/extras.c shared/smtp-ssl.c -lcurl -lusb-1.0 -std=c11
-
-#CFLAGS += -DBKEY=0xdeadbeef -DBUSR=\"prosimu\" -std=c11
-#CFLAGS += -DBKEY=0xb79837f0 -DBUSR=\"MLA\" -std=c11
-
-#make sticky for user exec as root
-chmod u+s mfc-main
-
-#make link for system wide access
-ln -s mfc-main /usr/local/sbin/mfc-main
-
- *
- *  */
-#define _POSIX_C_SOURCE 199309L
-
 #include <linux/types.h>
 #include <linux/input.h>
 #include <linux/hidraw.h>
@@ -50,8 +24,10 @@ ln -s mfc-main /usr/local/sbin/mfc-main
 #include <signal.h>
 
 #include <libusb-1.0/libusb.h>
+#ifdef _USE_PIGPIO_
 //for demo platform control
 #include <pigpio.h>
+#endif
 //our own
 #include "scn_adapter.h"
 #include "extras.h"
@@ -107,11 +83,13 @@ int fd;
 //int mfc_emufd = -1;
 int mfc_motfd = -1;
 int mfc_svrfd = -1;
+#ifdef _USE_PIGPIO_
 //gpio demo platform
 #define PGPIO_L   17  //rpi pin 11 - left servo
 #define PGPIO_R   27  //rpi pin 13 - right servo
 int mfc_gpiop = 1;
 int gpio_demo_on = 1;
+#endif
 //int mfc_whlfd = -1;
 //int mfc_joyfd = -1;
 /*
@@ -1250,7 +1228,8 @@ int main (int argc, char **argv)
               //
               if (_odbg > 3)
               {
-                for (int i = 0; i < pktl; i++)
+                int i;
+                for (i = 0; i < pktl; i++)
                   printf (", %d", pkt[i]);
               }
               if (pkt[0] == PKTT_DATA)

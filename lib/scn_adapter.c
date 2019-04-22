@@ -474,9 +474,6 @@ int scn_test (int fd1)
 {
   //set servo ON
   char buf[255];
-  char ccrc[5];
-  char cpos[15];
-  int stat = 0x0F0080F0;
   //position
   printf ("\n#i:current position <%d>", scn_get_pos (fd1));
   //power on
@@ -492,7 +489,7 @@ int scn_test (int fd1)
       cmd_ac[2+j] = mcmd[j];
     //
     printf ("\n#i:run cmd '%s'", cmd_ac);
-    stat = scn_send_cmd (fd1, cmd_ac, buf);
+    scn_send_cmd (fd1, cmd_ac, buf);
     if (*mcmd == 'o')//homing?
     {
       printf ("\n#i:wait for homing to finish..");

@@ -530,13 +530,13 @@ int opt_rpm_get ()
 
 int opt_gear_up ()
 {
-  opt_gear (1);
+  return opt_gear (1);
   //printf ("\n#gear UP");
 }
 
 int opt_gear_dn ()
 {
-  opt_gear (-1);
+  return opt_gear (-1);
   //printf ("\n#gear DN");
 }
 
@@ -544,21 +544,22 @@ int opt_gear_ready ()
 {
   opt_gear (0);
   bcast_send ();
+  return 1;
 }
 
 int opt_gear_max_up ()
 {
-  opt_gear_max (1);
+  return opt_gear_max (1);
 }
 
 int opt_gear_max_dn ()
 {
-  opt_gear_max (-1);
+  return opt_gear_max (-1);
 }
 
 int opt_gear_max_ready ()
 {
-  opt_gear_max (0);
+  return opt_gear_max (0);
 }
 
 long get_map (long x, long in_min, long in_max, long out_min, long out_max)

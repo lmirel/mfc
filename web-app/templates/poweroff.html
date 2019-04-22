@@ -1,0 +1,38 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html>
+    <head>
+        <title>MFC - control panel</title>
+       <link rel="stylesheet" media="screen" href ="static/css/bootstrap.min.css">
+       <link rel="stylesheet" href="static/css/bootstrap-theme.min.css">
+       <meta name="viewport" content = "width=device-width, initial-scale=1.0">
+    </head>
+    <body>
+
+<div class="container"> 
+  <h2>MFC - shutting down</h2>
+    <div class="form-group">
+      <hr />
+      <div class="alert alert-danger" role="alert">
+      {% if mfcpoweroff %}
+      <label for="name">SHUTDOWN MFC&nbsp;<span id="countdowntimer">in 10 seconds.</span></label>
+      <script type="text/javascript">
+          var timeleft = 10;
+          var downloadTimer = setInterval(function(){
+          timeleft--;
+          document.getElementById("countdowntimer").textContent = 'in '+timeleft+' seconds.';
+          if(timeleft <= 0){
+            clearInterval(downloadTimer);
+            document.getElementById("countdowntimer").textContent = 'done. It is now safe to power off the simulator.';
+            }
+          },1000);
+      </script> 
+      {% endif %}
+      </div>
+    </div>
+  <hr />
+</div>
+<br>      
+</div>
+</div>
+</body>
+</html>

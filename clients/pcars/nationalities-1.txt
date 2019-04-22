@@ -1,0 +1,198 @@
+1789542078	// Netherlands
+1972970704	// United Kingdom
+3566404340	// Sweden
+ 933178424	// Brazil
+ 195411600	// Spain
+2138617929	// United States
+ 753680743	// Italy
+3934440098	// Germany
+3603110075	// Australia
+ 248899932	// Denmark
+3130190211	// Norway
+ 690151854	// Estonia
+3485853035	// Serbia
+4292992555	// France
+4017120722	// Canada
+2907887040	// Romania
+1092764817	// Austria
+ 979408547	// Finland
+3170477316	// Portugal
+1404953171	// Luxembourg
+2031956853	// Belgium
+2853374193	// Hungary
+ 752461586	// South Africa
+3222417004	// Greece
+1581274920	// Poland
+ 149881629	// Republic of Ireland
+3125269705	// Switzerland
+2157405603	// New Zealand
+ 216721319	// Turkey
+ 272790137	// Russian Federation
+2012269211	// Czech Republic
+3001579446	// China
+2399632348	// Slovakia
+3259459973	// Lithuania
+3804014198	// Slovenia
+ 770156053	// India
+3345988718	// Croatia
+ 977063602	// Malaysia
+ 831848720	// Costa Rica
+1048434266	// Argentina
+ 833235463	// Saudi Arabia
+4280098137	// Colombia
+ 139476495	// Dominican Republic
+1232275962	// Bulgaria
+2843015852	// Monaco
+3335877396	// South Korea
+2330668439	// Bolivia
+2513016928	// Liechtenstein
+2233520611	// Ukraine
+2858248225	// Chile
+2113787902	// Belarus
+1004104139	// Uruguay
+ 258320890	// Latvia
+ 184915198	// Israel
+2722903741	// Hong Kong
+ 492274571	// Bahamas
+2654829672	// Malta
+4255744565	// Singapore
+ 384896822	// Papua New Guinea
+2346316924	// Philippines
+2346815196	// Japan
+3977255208	// United Arab Emirates
+2624663520	// Kuwait
+3784315612	// Lebanon
+1162214233	// Trinidad & Tobago
+3797532923	// Pakistan
+ 522928449	// Jordan
+1838010646	// Unknown Country
+2917972218	// Cyprus
+3161920416	// Egypt
+2053303132	// Honduras
+ 354037845	// Mexico
+ 480520203	// South Sudan
+2519632569	// Taiwan
+ 721944682	// Thailand
+1632746259	// Afghanistan
+3541969574	// Albania
+ 423689839	// Algeria
+3348262089	// Andorra
+2786472441	// Angola
+ 541637061	// Antigua & Deps
+ 209522979	// Armenia
+3728521899	// Azerbaijan
+ 161604861	// Bahrain
+2716540038	// Bangladesh
+3215009649	// Barbados
+ 230878689	// Belize
+ 736246323	// Benin
+1543086597	// Bhutan
+ 807758236	// Bosnia Herzegovina
+3658306084	// Botswana
+ 947827861	// Brunei
+3440272415	// Burkina
+3959682264	// Burundi
+  53098309	// Cambodia
+3192948457	// Cameroon
+1775433915	// Cape Verde
+2046648182	// Central African Rep
+ 391020673	// Chad
+ 741462397	// Comoros
+3866403346	// Congo
+ 177342161	// Congo {Democratic Rep}
+ 299745849	// Cuba
+ 287952743	// Djibouti
+ 105094378	// Dominica
+1218047749	// East Timor
+3236154164	// Ecuador
+1396282100	// El Salvador
+ 210475319	// Equatorial Guinea
+2346079107	// Eritrea
+1607750929	// Ethiopia
+ 132487377	// Fiji
+2485739431	// Gabon
+3227761707	// Gambia
+3709769954	// Georgia
+2797423031	// Ghana
+  76022338	// Grenada
+1455943258	// Guatemala
+1664883560	// Guinea
+2499976413	// Guinea-Bissau
+3367363097	// Guyana
+3177604910	// Haiti
+ 590731242	// Iceland
+1808026356	// Indonesia
+2750822362	// Iran
+2147370491	// Iraq
+  39656382	// Ivory Coast
+2775501937	// Jamaica
+1131445376	// Kazakhstan
+ 336535634	// Kenya
+1270786776	// Kiribati
+ 666535436	// North Korea 
+2197047881	// Kosovo
+ 304585820	// Kyrgyzstan
+2333177202	// Laos
+ 982509914	// Lesotho
+3711078890	// Liberia
+2043505043	// Libya
+ 677581763	// Macedonia
+ 593080711	// Madagascar
+3781526098	// Malawi
+4254993625	// Maldives
+3025946024	// Mali
+2204920653	// Marshall Islands
+2244126139	// Mauritania
+4002223123	// Mauritius
+1184097317	// Micronesia
+1907165309	// Moldova
+1000803830	// Mongolia
+2937736244	// Montenegro
+3285369857	// Morocco
+2233902883	// Mozambique
+2683828371	// Myanmar, {Burma}
+  50789397	// Namibia
+1447958436	// Nauru
+2014664974	// Nepal
+ 503234496	// Nicaragua
+2105063067	// Niger
+  70535177	// Nigeria
+2380156029	// Oman
+3434279812	// Palau
+ 320467675	// Panama
+1144025402	// Paraguay
+3172811872	// Peru
+3397031333	// Qatar
+1919919455	// Rwanda
+2579796710	// St Kitts & Nevis
+ 800822618	// St Lucia
+3045798930	// Saint Vincent & the Grenadines
+1330955221	// Samoa
+1569858552	// San Marino
+1317317158	// Sao Tome & Principe
+ 140823809	// Senegal
+ 504716274	// Seychelles
+1909535752	// Sierra Leone
+ 972869478	// Solomon Islands
+3838089428	// Somalia
+3282375956	// Sri Lanka
+3717491395	// Sudan
+2864353210	// Suriname
+3077391082	// Swaziland
+ 218809848	// Syria
+3960251839	// Tajikistan
+4058142606	// Tanzania
+3462625147	// Togo
+3141897835	// Tonga
+3256821232	// Tunisia
+2921126848	// Turkmenistan
+3588841184	// Tuvalu
+2035589130	// Uganda
+ 739254010	// Uzbekistan
+3923823956	// Vanuatu
+2240799821	// Vatican City
+3748489607	// Venezuela
+1322768235	// Vietnam
+ 264312192	// Yemen
+4269166507	// Zambia
+1883787884	// Zimbabwe

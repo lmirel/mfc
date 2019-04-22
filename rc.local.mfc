@@ -1,0 +1,64 @@
+#!/bin/sh -e
+#
+#
+# This script is executed at the end of each multiuser runlevel.
+# Make sure that the script will "exit 0" on success or any other
+# value on error.
+#
+# In order to disable this script please use systemd to control the service:
+# systemctl disable rc-local.service
+#
+# By default this script does nothing.
+
+#sleep 30
+
+echo "starting MFC subsystem"
+if [ ! -f /opt/server-mfc.default ]; then
+    touch /opt/server-mfc.default
+fi
+/opt/server-mfc $(cat /opt/server-mfc.default) > /tmp/mfc-svr.log 2>&1 &
+
+#if [ ! -f /opt/client-mfc.default ]; then
+#    touch /opt/client-mfc.default
+#fi
+#sleep 1
+#/opt/client-mfc $(cat /opt/client-mfc.default) > /tmp/mfc-cli.log 2>&1 &
+
+sleep 1
+if [ ! -f /opt/mfc-xtract.default ]; then
+    touch /opt/mfc-xtract.default
+fi
+/opt/mfc-xtract $(cat /opt/mfc-xtract.default) > /tmp/mfc-xtract.log 2>&1 &
+
+sleep 1
+if [ ! -f /opt/usbxtractor-mfc.default ]; then
+    touch /opt/usbxtractor-mfc.default
+fi
+/opt/usbxtractor-mfc $(cat /opt/usbxtractor-mfc.default) > /tmp/usbxtractor-mfc.log 2>&1 &
+
+#game clients
+sleep 1
+if [ ! -f /opt/mfcc-acd.default ]; then
+    touch /opt/mfcc-acd.default
+fi
+/opt/mfcc-acd $(cat /opt/mfcc-acd.default) > /tmp/mfcc-acd.log 2>&1 &
+
+sleep 1
+if [ ! -f /opt/mfcc-pcars2d.default ]; then
+    touch /opt/mfcc-pcars2d.default
+fi
+/opt/mfcc-pcarsd $(cat /opt/mfcc-pcars2d.default) > /tmp/mfcc-pcars2d.log 2>&1 &
+
+sleep 1
+if [ ! -f /opt/mfcc-cmf1d.default ]; then
+    touch /opt/mfcc-cmf1d.default
+fi
+/opt/mfcc-cmf1d $(cat /opt/mfcc-cmf1d.default) > /tmp/mfcc-cmf1d.log 2>&1 &
+
+#web mgmt panel
+sleep 1
+/opt/mfc-web/mfc-miniapp.py > /tmp/mfc-web.log 2>&1 &
+
+echo "MFC subsystem started"
+
+exit 0

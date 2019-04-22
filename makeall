@@ -1,0 +1,42 @@
+#!/bin/bash
+
+TOOLS="
+mfcserver
+mfcxtract"
+
+for TOOL in $TOOLS
+do
+  echo Making $TOOL:
+  cd $TOOL
+  #make clean > /dev/null
+  make
+  cd ..
+done
+
+TOOLS1="
+usbxtract/sw
+clients/pcars
+clients/assetto-corsa
+clients/cm-f1
+clients/cm-dr"
+
+for TOOL in $TOOLS1
+do
+  echo Making $TOOL:
+  cd $TOOL
+  #make clean > /dev/null
+  make
+  cd ..
+  cd ..
+done
+
+mkdir _out
+cp mfcserver/mfc-main-svr _out/
+cp mfcxtract/mfc-xtract   _out/
+cp usbxtract/sw/usbxtract _out/usbxtractor-mfc
+cp clients/pcars/mfc-cli-pcars2     _out/
+cp clients/assetto-corsa/mfc-cli-ac _out/
+cp clients/cm-f1/mfc-cli-cm-f1      _out/
+cp clients/cm-dr/mfc-cli-cm-drally  _out/
+
+echo "done."

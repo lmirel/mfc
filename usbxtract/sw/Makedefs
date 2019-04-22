@@ -1,0 +1,3 @@
+CFLAGS += -Wall -Wextra -Wno-unused-parameter -O3
+LDLIBS += -lusb-1.0 -ludev
+CPPFLAGS+=-I../include -Iinclude -Ilib/gasync/include

@@ -719,7 +719,7 @@ void _check_bkey ( char *_bkey, char *_busr)
 		if (read (sdkfn, _sdbkey, 12) > 0)
 		{
 			_sdbkey[10] = 0;
-      sprintf (_sdbkey, "0x%x", strtol(_sdbkey, NULL, 16));
+      sprintf (_sdbkey, "0x%x", (unsigned int)strtol(_sdbkey, NULL, 16));
 		  //printf (" vs. key '%s', ", _sdbkey);
     }
 		close (sdkfn);

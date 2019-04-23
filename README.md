@@ -10,10 +10,11 @@ the next thing it does, it uses the USB HID data exchanged between the steering 
 <br>
 <br>how this works:<br>
 the MFC SERVER controls the motion platform drivers (so far works with SCN6 but Arduino controller support is in the works).<br>
-the MFC CLIENTS are programs that receive native telemetry data and sends it to the server. clients developed so far:
+the MFC CLIENTS are programs that receive native telemetry data and sends it to the server. clients developed so far:<br>
 - Assetto Corsa
 - Codemaster's F1 and Dirt Rally
-- Project Cars 2.<br>
+- Project Cars 2
+<br>
 the USB XTRACTOR is used to proxy between the steering wheel and the console to extract USB HID data.<br>
 the MFC XTRACTOR uses the USB HID data to generate game telemetry.<br>
 the two extractors are only needed if the games you play don't provide in-game telemetry via UDP/TCP. the USBXTRACTOR also requires an Arduino/Teensy atmega32u4 with custom firmware. this solution is based on Matlo's and is documented on http://gimx.fr and the Arduino firmware is based on the code from https://github.com/matlo/serialusb<br>

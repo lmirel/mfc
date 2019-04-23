@@ -54,7 +54,7 @@ static int client_init ()
   int s = -1;
   //open capture file
   if (adapterDbg == 0x20)
-    cfile = open ("/tmp/usbx.cap", O_WRONLY | O_CREAT | O_TRUNC);
+    cfile = open ("/tmp/usbx.cap", O_WRONLY | O_CREAT | O_TRUNC, 666);
   if ((s = socket (AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
   {
     printf ("\n#ERR:socket");
@@ -110,8 +110,9 @@ static int client_send (s_packet *packet)
   //
   if (0 && packet->header.length > 60)
   {
+    int i;
     printf ("\n#PKT:%03d bytes, type %x\n##", packet->header.length, packet->header.type);
-    for (int i = 0; i < packet->header.length; i++)
+    for (i = 0; i < packet->header.length; i++)
       printf ("%02x ", packet->value[i]);
     fflush (stdout);
   }
@@ -123,9 +124,9 @@ static int client_send (s_packet *packet)
     if (cfile > 0)
     {
       //write debug
-      write (cfile, (const void *)&dpkt, dpkt.header.length + 2);
+      bs = write (cfile, (const void *)&dpkt, dpkt.header.length + 2);
       //write USB data
-      write (cfile, (const void *)packet, packet->header.length + 2);
+      bs = write (cfile, (const void *)packet, packet->header.length + 2);
     }
     //
     switch (packet->header.type)
@@ -137,7 +138,7 @@ static int client_send (s_packet *packet)
         {
           if (adapterDbg)
             //write debug pkt first
-            (void)sendto (csock, (const void *)&dpkt, dpkt.header.length + 2, 0, (struct sockaddr*)&mfc_si_other, sizeof (mfc_si_other));
+            bs = sendto (csock, (const void *)&dpkt, dpkt.header.length + 2, 0, (struct sockaddr*)&mfc_si_other, sizeof (mfc_si_other));
           //write USB data
           bs = sendto (csock, (const void *)packet, packet->header.length + 2, 0, (struct sockaddr*)&mfc_si_other, sizeof (mfc_si_other));
         }
@@ -154,8 +155,9 @@ static int client_send (s_packet *packet)
         }
         if (0 && packet->header.length)
         {
+          int i;
           printf ("\n#i:CTL %03d bytes, type %x\n##", packet->header.length, packet->header.type);
-          for (int i = 0; i < packet->header.length; i++)
+          for (i = 0; i < packet->header.length; i++)
             printf ("%02x ", packet->value[i]);
         }
         break;
@@ -184,7 +186,7 @@ void adapter_init(void) {
 char adapter_debug (char dbg)
 {
   char ret = adapterDbg;
-  if (dbg != 0xff)
+  if (dbg > 0)
     adapterDbg = dbg;
   return ret;
 }

@@ -677,7 +677,7 @@ Heave means the acceleration up and down [g]
     //dof2l = pdata[MFC_PIPITCH] + pdata[MFC_PISURGE] + pdata[MFC_PIHEAVE] + pdata[MFC_PIROLL] + pdata[MFC_PISWAY];
     //dof2r = pdata[MFC_PIPITCH] + pdata[MFC_PISURGE] + pdata[MFC_PIHEAVE] - pdata[MFC_PIROLL] - pdata[MFC_PISWAY];
     //
-    if (1||_odbg)
+    if (_odbg)
       printf ("\n#i@%04lu.roll:% 6d (r: % 5d / s: % 5d) | pitch: % 6d \t(p: % 5d / s: % 5d / h: % 5d)",
         mdt, _cpkt[MFC_PIROLL] + _cpkt[MFC_PISWAY], _cpkt[MFC_PIROLL], _cpkt[MFC_PISWAY],
         _cpkt[MFC_PIPITCH] + _cpkt[MFC_PISURGE] + _cpkt[MFC_PIHEAVE],
@@ -710,7 +710,7 @@ int motion_process_dummy (char *report, int rlen, unsigned long dtime)
     {
       //unhandled
       _wd = 'U';
-      if (1 || _odbg)
+      if (_odbg)
       {
         printf ("\n#w!FFB@%04lu: ", dtime);
         for (int i = 0; i < rlen; i++)
@@ -726,7 +726,7 @@ int motion_process_dummy (char *report, int rlen, unsigned long dtime)
     {
       //unhandled
       _wd = 'W';
-      if (1 || _odbg)
+      if (_odbg)
       {
         printf ("\n#w!WHL@%04lu: ", dtime);
         for (int i = 0; i < rlen; i++)
@@ -863,7 +863,7 @@ int motion_process_logitech (char *report, int rlen, unsigned long dtime)
           _wd = 'U';
         }
         else
-        if (1 || _odbg)
+        if (_odbg)
         {
           _wd = 'U';
           printf ("\n#w!FFB@%04lu: ", dtime);
@@ -880,7 +880,7 @@ int motion_process_logitech (char *report, int rlen, unsigned long dtime)
       {
         //unhandled
         _wd = 'U';
-        if (1||_odbg)
+        if (_odbg)
         {
           printf ("\n#i.WHL@%04lu: ", dtime);
           for (int i = 0; i < rlen; i++)
@@ -897,7 +897,7 @@ int motion_process_logitech (char *report, int rlen, unsigned long dtime)
         lpbrk   = normal_brake (get_short (report, 50), 0x0ffff);
         //lhbrk   = normal_brake (get_short (report, 54), 0x0ffff); //handbrake
         //
-        if (1 || _odbg > 2)
+        if (_odbg > 2)
           printf ("\n#RAW whl %d acc %d brk %d", pw_roll, lpacc, lpbrk);
         //
         if (lpbrk < -5)
@@ -1409,7 +1409,7 @@ FFB@002ms: 0002 01 ee 40 3d 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 0
       {
         //unhandled
         _wd = 'U';
-        if (1 || _odbg)
+        if (_odbg)
         {
           printf ("\n#w!FFB@%04lu: ", dtime);
           for (int i = 0; i < rlen; i++)
@@ -2091,7 +2091,7 @@ FFB@00003ms: ee 40 35 20 00 06 06 f1 ff 00 00 14 14 00 00 00 00 00 00 00 00 00 0
       /*
        * wheel data processing
        */
-      if (1 || _odbg > 2)
+      if (_odbg > 2)
       {
         printf ("\n#w!UNK pkt: ");
         for (int i = 0; i < rlen; i++)

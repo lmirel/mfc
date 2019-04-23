@@ -3,32 +3,6 @@
  License: GPLv3
  */
 
-/* Linux
- *
- * build:
-gcc -o /opt/server-mfc mfc-main-svr.c shared/scn_adapter.c shared/extras.c -lusb-1.0 -std=c11
-
-gcc -o /opt/server-mfc mfc-main-svr.c -DBKEY=`cat /sys/block/mmcblk0/device/serial` -DBUSR=\"`whoami`\" shared/scn_adapter.c shared/extras.c -lusb-1.0 -std=c11 -lpigpio
-
-gcc -o /opt/server-mfc mfc-main-svr.c -DBKEYE -DBKEY=`cat /sys/block/mmcblk0/device/serial` -DBUSR=\"`whoami`\" shared/scn_adapter.c shared/extras.c shared/smtp-ssl.c -lcurl -lusb-1.0 -std=c11 -lpigpio
-
-gcc -o /opt/server-mfc mfc-main-svr.c -DBKEY=0xdeadbeef -DBUSR=\"`whoami`\" shared/scn_adapter.c shared/extras.c shared/smtp-ssl.c -lcurl -lusb-1.0 -std=c11
-
-gcc -o /opt/server-mfc mfc-main-svr.c shared/scn_adapter.c shared/extras.c shared/smtp-ssl.c -lcurl -lusb-1.0 -std=c11
-
-#CFLAGS += -DBKEY=0xdeadbeef -DBUSR=\"prosimu\" -std=c11
-#CFLAGS += -DBKEY=0xb79837f0 -DBUSR=\"MLA\" -std=c11
-
-#make sticky for user exec as root
-chmod u+s mfc-main
-
-#make link for system wide access
-ln -s mfc-main /usr/local/sbin/mfc-main
-
- *
- *  */
-#define _POSIX_C_SOURCE 199309L
-
 #include <linux/types.h>
 #include <linux/input.h>
 #include <linux/hidraw.h>
@@ -50,8 +24,10 @@ ln -s mfc-main /usr/local/sbin/mfc-main
 #include <signal.h>
 
 #include <libusb-1.0/libusb.h>
+#ifdef _USE_PIGPIO_
 //for demo platform control
 #include <pigpio.h>
+#endif
 //our own
 #include "scn_adapter.h"
 #include "extras.h"
@@ -107,11 +83,13 @@ int fd;
 //int mfc_emufd = -1;
 int mfc_motfd = -1;
 int mfc_svrfd = -1;
+#ifdef _USE_PIGPIO_
 //gpio demo platform
 #define PGPIO_L   17  //rpi pin 11 - left servo
 #define PGPIO_R   27  //rpi pin 13 - right servo
 int mfc_gpiop = 1;
 int gpio_demo_on = 1;
+#endif
 //int mfc_whlfd = -1;
 //int mfc_joyfd = -1;
 /*
@@ -1171,7 +1149,6 @@ int main (int argc, char **argv)
       {
         if(fds[i].revents & POLLIN || fds[i].revents & POLLPRI || fds[i].revents & POLLOUT || fds[i].revents & POLLHUP)
         {
-          //if (1||/*mtime < 2 || */(rtime % 100) == 0)
           if ((rkntr % 500) == 0)
             printf ("\n#i:poll %dfds:%s:%d@%lums/%lusec, %d/%d pkts(evt/drop)", (int)poll_i, fds[i].revents & POLLIN?"in":"out", fds[i].fd,
                 mtime, rtime / 1000, rkntr, rkdrop);
@@ -1250,7 +1227,8 @@ int main (int argc, char **argv)
               //
               if (_odbg > 3)
               {
-                for (int i = 0; i < pktl; i++)
+                int i;
+                for (i = 0; i < pktl; i++)
                   printf (", %d", pkt[i]);
               }
               if (pkt[0] == PKTT_DATA)
@@ -1293,11 +1271,11 @@ int main (int argc, char **argv)
                 else
                 {
                   rkdrop++;
-                  if (1||_odbg > 1)
+                  if (_odbg > 1)
                   {
                     printf ("\n#w@%04d:drop early pkt %d type 0x%02x", mms, rkdrop, pkt[MFC_PIDOF]);
                     int *_cpkt = pkt;
-                    if (1||_odbg > 2)
+                    if (_odbg > 2)
                       printf ("\n#w.roll:% 6d (r: % 5d / s: % 5d) | pitch: % 6d \t(p: % 5d / s: % 5d / h: % 5d)",
                         _cpkt[MFC_PIROLL] + _cpkt[MFC_PISWAY], _cpkt[MFC_PIROLL], _cpkt[MFC_PISWAY],
                         _cpkt[MFC_PIPITCH] + _cpkt[MFC_PISURGE] + _cpkt[MFC_PIHEAVE],

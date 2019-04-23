@@ -346,7 +346,7 @@ int main (int argc, char **argv, char **envp)
       switch (argv[i][1])
       {
       	case 'c': //roll %
-      		snprintf (_pp_ps4, 49, argv[i]+2);
+      		snprintf (_pp_ps4, 49, "%s", argv[i]+2);
       		pp_ps4 = _pp_ps4;
       	  break;
         //profiling params

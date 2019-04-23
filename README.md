@@ -1,5 +1,4 @@
-# mfc
-motion feedback controller
+# mfc - motion feedback controller
 
 this tool uses the native in-game telemetry shared via UDP/TCP from games to control a motion platform.
 the next thing it does, it uses the USB HID data exchanged between the steering wheel and the gaming console to 'guesstimate' how a motion platform SHOULD move as if it had telemetry available. it does its best and most of the times it manages well. keep in mind however that it guesses that and it relies heavily on the FFB and wheel data to do it.

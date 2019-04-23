@@ -9,11 +9,11 @@ the next thing it does, it uses the USB HID data exchanged between the steering 
 - Fanatec Elite CSL for PS4
 <br>
 <br>how this works:<br>
-the MFCSERVER controls the motion platform drivers (so far works with SCN6 but Arduino controller support is in the works).<br>
-the MFCCLIENTS are programs that receive native telemetry data and sends it to the server.<br>
-the USBXTRACTOR is used to proxy between the steering wheel and the console to extract USB HID data.<br>
-the MFCXTRACTOR uses the USB HID data to generate game telemetry.<br>
-the two 'xtractors' are only needed if the games you play don't provide in-game telemetry via UDP/TCP. the USBXTRACTOR also requires an Arduino/Teensy atmega32u4 with custom firmware. this solution is based on Matlo's and is documented on http://gimx.fr and the Arduino firmware is based on the code from https://github.com/matlo/serialusb<br>
+the MFC SERVER controls the motion platform drivers (so far works with SCN6 but Arduino controller support is in the works).<br>
+the MFC CLIENTS are programs that receive native telemetry data and sends it to the server.<br>
+the USB XTRACTOR is used to proxy between the steering wheel and the console to extract USB HID data.<br>
+the MFC XTRACTOR uses the USB HID data to generate game telemetry.<br>
+the two extractors are only needed if the games you play don't provide in-game telemetry via UDP/TCP. the USBXTRACTOR also requires an Arduino/Teensy atmega32u4 with custom firmware. this solution is based on Matlo's and is documented on http://gimx.fr and the Arduino firmware is based on the code from https://github.com/matlo/serialusb<br>
 <br>
 the end result using the xtractors on a PS4 system looks something like this:<br>
 https://www.youtube.com/watch?v=uBPW2BS_ysU&t=1s and https://www.youtube.com/watch?v=jvZpMXiD8k4&t=1s

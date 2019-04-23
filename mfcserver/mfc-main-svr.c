@@ -228,7 +228,7 @@ int env_init (int argc, char **argv)
    *
    */
   printf ("\n# ##");
-  printf ("\n#MFC server");
+  printf ("\n#MFC server %s", MFC_VERSION);
   printf ("\n#running configuration:");
   printf ("\n#   motion response %dms (-l%d) range [0..100]", _oml, _oml);
   printf ("\n#      motion speed %d (-s%d) range [1..7]", _omspeed, _omspeed);

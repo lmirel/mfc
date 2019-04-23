@@ -10,6 +10,8 @@ modification history
                adapted for motion feedback controller
 */
 
+#define MFC_VERSION "0.8.1"
+
 /*
   int pkt_type;
   int pkt_dof_type;

@@ -186,7 +186,7 @@ void adapter_init(void) {
 char adapter_debug (char dbg)
 {
   char ret = adapterDbg;
-  if (dbg > 0)
+  if (dbg != 0xff)
     adapterDbg = dbg;
   return ret;
 }

@@ -192,7 +192,7 @@ int main (int argc, char **argv, char **envp)
   //configuration summary
   lport = 64402;
   printf ("\n# ##");
-  printf ("\n#MFC extractor client");
+  printf ("\n#MFC extractor client %s", MFC_VERSION);
   printf ("\n#running configuration:");
   //printf ("\n#      roll range %d [1..10]", _rollspd);
   //printf ("\n#    accel. speed %d (-a%d) range [1..10]", _accspd, _accspd);

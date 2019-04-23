@@ -16,6 +16,8 @@
 #include <getopt.h>
 #include <adapter.h>
 
+#include <extras.h>
+
 static char * port = NULL;
 static char * udev = NULL;
 int vid = 0, pid = 0;
@@ -101,6 +103,8 @@ static void terminate (int sig)
 
 int main (int argc, char * argv[]) 
 {
+  printf ("\n# ##");
+  printf ("\n#USB extractor %s\n", MFC_VERSION);
 
   (void) signal (SIGINT, terminate);
   (void) signal (SIGTERM, terminate);

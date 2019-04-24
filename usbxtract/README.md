@@ -1,3 +1,5 @@
+adapted to MFC from `serialusb`
+
 # What?
 
 serialusb is a cheap (~$5) USB proxy intended to be used with input devices.

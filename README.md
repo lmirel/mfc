@@ -13,7 +13,7 @@ the next thing it does, it uses the USB HID data exchanged between the steering 
 - Thrustmaster T300RS for PS4
 - Logitech G92 for PS4
 - Fanatec Elite CSL for PS4
-<br>
+
 # how this works
 
 the MFC SERVER controls the motion platform drivers (so far works with SCN6 but Arduino controller support is in the works).<br>

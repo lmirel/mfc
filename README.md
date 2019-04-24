@@ -25,7 +25,7 @@ the two extractors are only needed if the games you play don't provide in-game t
 the end result using the xtractors on a PS4 system looks something like this:<br>
 https://www.youtube.com/watch?v=uBPW2BS_ysU&t=1s and https://www.youtube.com/watch?v=jvZpMXiD8k4&t=1s
 
-#TODO
+# TODO
 
 - <a href="https://github.com/lmirel/mfc/wiki">Wiki</a>
 - add motion support for Arduino-based controllers

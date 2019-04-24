@@ -24,7 +24,7 @@ the two extractors are only needed if the games you play don't provide in-game t
 <br>
 the end result using the xtractors on a PS4 system looks something like this:<br>
 https://www.youtube.com/watch?v=uBPW2BS_ysU&t=1s and https://www.youtube.com/watch?v=jvZpMXiD8k4&t=1s
-<br>
+
 #TODO
 
 - <a href="https://github.com/lmirel/mfc/wiki">Wiki</a>

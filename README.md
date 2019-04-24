@@ -15,6 +15,7 @@ the next thing it does, it uses the USB HID data exchanged between the steering 
 - Fanatec Elite CSL for PS4
 <br>
 # how this works
+
 the MFC SERVER controls the motion platform drivers (so far works with SCN6 but Arduino controller support is in the works).<br>
 the MFC CLIENTS are programs that receive native telemetry data and sends it to the server. clients developed so far:<br>
 <br>

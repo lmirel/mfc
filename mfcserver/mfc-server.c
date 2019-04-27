@@ -98,7 +98,7 @@ char _ostdin = 1;
 char _ofifo = 0;
 char _omotion = 1;
 char _oml = 2;
-int _omspeed = 4;
+int _omspeed = 5;
 char bcast_addr[35] = {0};
 char _done = 0;
 
@@ -203,7 +203,7 @@ int env_init (int argc, char *argv[])
     { "debug",   required_argument, 0, 'd' },
     { "arduino", no_argument,       0, 'a' },
     { "scn",     no_argument,       0, 'n' },
-    { "dummy",   no_argument,       0, 'y' },
+    //{ "dummy",   no_argument,       0, 'y' },
     { "output-device",  required_argument, 0, 'o' },
     { 0, 0, 0, 0 }
   };
@@ -213,7 +213,7 @@ int env_init (int argc, char *argv[])
     /* getopt_long stores the option index here. */
     int option_index = 0;
 
-    c = getopt_long (argc, argv, "o:s:d:l:hmVany", long_options, &option_index);
+    c = getopt_long (argc, argv, "o:s:d:l:hmVan", long_options, &option_index);
 
     /* Detect the end of the options. */
     if (c == -1)
@@ -1162,6 +1162,8 @@ static int scnAdof_set_pos (int *pdata)
     scn_set_pos (mfc_dof[dof_back].ctlfd, mfc_dof[dof_back].pos);
     //scn_get_response (mfc_dof[dof_back].ctlfd, rsp);
   }
+  if (1)
+  {
     //left
     scndof_move (dof_left);
     //right
@@ -1174,12 +1176,16 @@ static int scnAdof_set_pos (int *pdata)
     scndof_move (dof_back);
     //alt back
     scndof_move (dof_aback);
-    //
     if (_odbg)
-    {
-      printf ("\n#i@%04d:cmap pos L%d, R%d, B %d", dtime_ms(), dof2l, dof2r, dof1b);
-      dmyAdof_set_pos (pdata);
-    }
+      printf ("\n#i@%04d:DOF pos L%d, R%d, B %d", dtime_ms(),
+          mfc_dof[dof_left].pos, mfc_dof[dof_right].pos, mfc_dof[dof_back].pos);
+  }
+  //
+  if (_odbg)
+  {
+    printf ("\n#i@%04d:cmap pos L%d, R%d, B %d", dtime_ms(), dof2l, dof2r, dof1b);
+    dmyAdof_set_pos (pdata);
+  }
 #ifdef _USE_PIGPIO_
     if (0)
       gpio_demo_spos (dof2l, dof2r);
@@ -1290,9 +1296,10 @@ int scnAdof_consume (int fd)
     {
       char rsp[20];
       scn_get_response (fd, rsp);
+      return 1;
     }
   }
-  return 1;
+  return 0;
 }
 //
 int xdof_consume_fd (int fd)
@@ -1450,7 +1457,7 @@ int main (int argc, char **argv)
   //
   //add command control pipe
   //mfc_fifoinp_new ();
-  int rkntr = 0, rkffb = 0, rkdat = 0, rkdrop = 0;
+  int rkntr = 1, rkffb = 0, rkdat = 0, rkdrop = 0;
   int i, mms = 0, cms;
   int _motion = 1;
   unsigned long mtime = 0;
@@ -1544,6 +1551,7 @@ int main (int argc, char **argv)
         _motion = 0;
         xdof_stop ();
         printf ("\n#i@04%lu:STOP motion", mtime);
+        fflush (stdout);
         //
 #ifdef _USE_PIGPIO_
         gpio_demo_stop ();
@@ -1572,17 +1580,17 @@ int main (int argc, char **argv)
       //update ffb time
       for (i = 0; i < poll_i; ++i)
       {
-        if(fds[i].revents & POLLIN || fds[i].revents & POLLPRI || fds[i].revents & POLLOUT || fds[i].revents & POLLHUP)
+        if(fds[i].revents & (POLLIN | POLLPRI | POLLOUT | POLLHUP))
         {
           if ((rkntr % 500) == 0)
-            printf ("\n#i:poll %dfds:%s:%d@%lums/%lusec, %d/%d pkts(evt/drop)", (int)poll_i, fds[i].revents & POLLIN?"in":"out", fds[i].fd,
+            printf ("\n#i:poll %dfds:%s:%d@%lums/%lusec, %d/%d pkts(evt/drop)", (int)poll_i, fds[i].revents & POLLIN?"IN":"OUT", fds[i].fd,
                 mtime, rtime / 1000, rkntr, rkdrop);
           //
         }
         else
           continue;
         //
-        if (1) printf ("\n#i:%d polled", fds[i].fd);
+        if (0) printf ("\n#i:%d polled", fds[i].fd);
         //
         if(fds[i].revents & POLLIN || fds[i].revents & POLLPRI || fds[i].revents & POLLHUP )
         {

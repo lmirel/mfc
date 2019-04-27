@@ -29,12 +29,11 @@ do
   cd $TOOL
   #make clean > /dev/null
   make
-  cd ..
-  cd ..
+  cd ../..
 done
 
 mkdir -p .mfc
-cp mfcserver/mfc-main-svr .mfc/
+cp mfcserver/mfc-server .mfc/
 cp mfcxtract/mfc-xtract   .mfc/
 cp usbxtract/sw/usbxtract .mfc/usbxtract
 cp clients/pcars/mfc-cli-pcars2     .mfc/

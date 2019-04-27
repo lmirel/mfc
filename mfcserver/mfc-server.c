@@ -15,6 +15,8 @@
 #include <unistd.h>
 #include <time.h>
 #include <poll.h>
+#include <getopt.h>
+#include <termios.h>
 
 /* C */
 #include <stdio.h>
@@ -44,8 +46,9 @@
 
 #define NAME_LENGTH 128
 
-int usleep(long usec);
-int p2dof_home_init ();
+//int usleep(long usec);
+
+int xdof_home_init ();
 
 #define MRANGE_MAX  10000
 
@@ -75,12 +78,6 @@ void mfc_mot_start ();
 /*
  *
  */
-int fd;
-/*
- *
- */
-
-//int mfc_emufd = -1;
 int mfc_motfd = -1;
 int mfc_svrfd = -1;
 #ifdef _USE_PIGPIO_
@@ -95,33 +92,17 @@ int gpio_demo_on = 1;
 /*
  *
  */
-char *pp_hidraw = "/dev/hidraw0";
-char _p_hidraw[250];
-char *pp_ttyusb = "/dev/ttyUSB0";
-char _p_ttyusb[250];
 char _odbg = 0;
 char _omot = 0;   //don't process motion, just debug it
 char _ostdin = 1;
 char _ofifo = 0;
-char _owheel = 0, _ogame = 0, _omotion = 1, _offb = 1, _owweight = 1, _ojswap = 0;
-char _oemu = 0;
-char _oml = 2;  //motion limit
-int  _odz = 10;  //motion dead zone
-int  _oin = 3;   //motion wheel input multiplier
-int  _ovib = 20; //vibrations multiplier
-int  _odrv1  = 0;  //driver 1 offset
-int  _odrv2  = 0;  //driver 2 offset
-int js_pos_dz = 0;
-int js_pos_max = 0;
+char _omotion = 1;
+char _oml = 2;
 int _omspeed = 4;
-char *pp_jrk1 = "/dev/ttyUSB1";
-//char *pp_jrk2 = "/dev/ttyACM2";
 char bcast_addr[35] = {0};
 char _done = 0;
 
 #define MOTION_FREQ_MS      30
-#define MOTION_VIB_GT6_MUL  8
-#define FFB_TMO             2000 //msecs
 
 void terminate (int sig)
 {
@@ -164,14 +145,14 @@ int stdin_process_message (char *buf)
   {
     case 'd': //debug enabled
       _odbg = atoi((const char *)buf + 1);
-      printf ("\n#debug level: %d", _oin);
+      printf ("\n#debug level: %d", _odbg);
       break;
     case 'm': //send motion data
       _omotion = atoi(buf + 1);
       printf ("\n#m:motion: %s", _omotion?"on":"off");
       if (_omotion)
       {
-        p2dof_home_init ();
+        xdof_home_init ();
         //set speed
         mfc_mot_start ();
       }
@@ -191,38 +172,132 @@ int stdin_process_message (char *buf)
   return 1;
 }
 
-int env_init (int argc, char **argv)
+static void usage()
+{
+  printf("#usage: sudo mfc-server\n");
+}
+
+typedef enum {
+  oi_dummy = 0,
+  oi_scn,
+  oi_arduino,
+} out_if;
+char *out_ifn[] = {"dummy/debug", "SCN5/6", "arduino", ""};
+static int out_ifx = oi_dummy;
+static int odpid = 0, odvid = 0;
+
+int env_init (int argc, char *argv[])
 {
   /*
    * init params and stuff
    */
   //
-  int i;
-  for (i = 1; i < argc; i++)
+  int c;
+
+  struct option long_options[] = {
+    /* These options don't set a flag. We distinguish them by their indices. */
+    { "help",    no_argument,       0, 'h' },
+    { "version", no_argument,       0, 'V' },
+    { "latency", required_argument, 0, 'l' },
+    { "speed",   required_argument, 0, 's' },
+    { "debug",   required_argument, 0, 'd' },
+    { "arduino", no_argument,       0, 'a' },
+    { "scn",     no_argument,       0, 'n' },
+    { "dummy",   no_argument,       0, 'y' },
+    { "output-device",  required_argument, 0, 'o' },
+    { 0, 0, 0, 0 }
+  };
+
+  while (1)
   {
-    if (argv[i][0] == '-')
-      switch (argv[i][1])
+    /* getopt_long stores the option index here. */
+    int option_index = 0;
+
+    c = getopt_long (argc, argv, "o:s:d:l:hmVany", long_options, &option_index);
+
+    /* Detect the end of the options. */
+    if (c == -1)
+      break;
+
+    switch (c) {
+
+    case 'h':
+      usage ();
+      exit (0);
+      break;
+
+    case 'l': //motion response
+      _oml = atoi (optarg);
+      if (_oml < 0 || _oml > 100)
+        _oml = 2;
+      break;
+
+    case 'd': //debug enabled
+      _odbg++;
+      break;
+
+    case 'm': //motion enabled
+      _omot++;
+      break;
+
+    case 'o': //output device vid:pid
+      if (sscanf (optarg, "%04x:%04x", &odvid, &odpid) < 2)
       {
-        case 'l': //motion response
-          _oml = atoi(argv[i]+2);
-          if (_oml < 0 || _oml > 100)
-            _oml = 2;
-          break;
-        case 'd': //debug enabled
-          _odbg++;
-          break;
-        case 'm': //debug enabled
-          _omot++;
-          break;
-        case 's': //motion speed: more means faster, 0 is fastest
-          _omspeed = atoi(argv[i]+2);
-          if (_omspeed < 1 || _omspeed > 7)
-            _omspeed = 4;
-          break;
-        default:
-          printf ("\n#w:unknown option -%c", argv[i][1]);
+        printf ("invalid option: --output-device %s\n", optarg);
+        usage ();
+        return -1;
       }
+      if (odvid == 0)
+      {
+        printf ("invalid option: --output-device %s\n", optarg);
+        usage ();
+        return -1;
+      }
+      if (odpid == 0)
+      {
+        printf ("invalid option: --output-device %s\n", optarg);
+        usage ();
+        return -1;
+      }
+      break;
+
+    case 'a': //use Arduino output interface
+      out_ifx = oi_arduino;
+      break;
+
+    case 'n': //use Arduino output interface
+      out_ifx = oi_scn;
+//#define FTDI_VID  0x0403
+//#define FTDI_PID  0x6001
+      if (odvid == 0 && odpid == 0)
+      {
+        odvid = 0x0403;
+        odpid = 0x6001;
+      }
+      break;
+
+    case 's': //motion speed: more means faster, 0 is fastest
+      _omspeed = atoi (optarg);
+      if (_omspeed < 1 || _omspeed > 7)
+        _omspeed = 4;
+      break;
+
+    case 'V':
+      printf("mfc-server %s\n", MFC_VERSION);
+      exit(0);
+      break;
+
+    case '?':
+      usage();
+      exit(-1);
+      break;
+
+    default:
+      printf("unrecognized option: %c\n", c);
+      break;
+    }
   }
+
   /*
    * summary configuration
    *
@@ -231,9 +306,10 @@ int env_init (int argc, char **argv)
   printf ("\n#MFC server %s", MFC_VERSION);
   printf ("\n#running configuration:");
   printf ("\n#   motion response %dms (-l%d) range [0..100]", _oml, _oml);
-  printf ("\n#      motion speed %d (-s%d) range [1..7]", _omspeed, _omspeed);
-  printf ("\n#   verbosity level %d (-d%d)", _odbg, _odbg);
-  printf ("\n#    motion process %s (-m)", _omot?"no":"yes");
+  printf ("\n#      motion speed %d (-s %d) range [1..7]", _omspeed, _omspeed);
+  printf ("\n#   verbosity level %d (-d %d)", _odbg, _odbg);
+  printf ("\n#  output interface %s", out_ifn[out_ifx]);
+  printf ("\n#     output device %04x:%04x", odvid, odpid);
   printf ("\n# ##");
   //
   return 1;
@@ -290,12 +366,10 @@ int mfc_fifoinp_del ()
 #endif
 
 //
-int rkntr = 0, rkffb = 0, rkdat = 0, rkdrop = 0, pl, rl;
 /*
 * timestamping
 */
-long mtime = 0, rtime = 0, ntime = 0;
-long ffbtime = 0;
+long rtime = 0;
 //
 
 //
@@ -345,20 +419,42 @@ pitch [-5000, 5000]
 --
 */
 
+#define DOF_MAX   6
+/*
+ * DOF assignments
+ *
+ * 1 DOF: dof_back
+ * 2 DOF: dof_left, dof_right
+ * 3 DOF: dof_left, dof_right, dof_back
+ * 4 DOF: dof_left, dof_right, dof_aleft, dof_aright
+ * 5 DOF: dof_left, dof_right, dof_aleft, dof_aright, dof_back
+ * 6 DOF: dof_left, dof_right, dof_aleft, dof_aright, dof_back, dof_aback
+ *
+ * when enumerating the number of devices found,
+ * we assign them based on the above.
+ * in the same way, we submit motion positioning control based on this
+ */
+typedef enum {
+  dof_left = 0,
+  dof_right,
+  dof_aleft,
+  dof_aright,
+  dof_back,
+  dof_aback
+} DOF_POS;
+//one dof struct
 typedef struct {
-  int lfd, rfd;       //left SCN6 fd / right SCN6 fd
-  int croll, cpitch;  //current roll / pitch positions
-  char invr, invp;    //invert roll / pitch
-} p2dof;
-int actl_max = 0;
-int l_min = 0;
-int l_max = 0;
-int actr_max = 0;
-int r_min = 0;
-int r_max = 0;
+  int ctlfd;        //actuator control fd
+  char *ctlport;    //actuator control port: /dev/serial/by-id/usb..
+  int amin, amax;   //actual range
+  int cmin, cmax;   //current range
+  int pos;          //current position - computed
+} p1dof;
+static p1dof mfc_dof[DOF_MAX];
+static int dof_count = 0; //number of DOFs detected
 
-int p2dof_init (char *lport, char *rport);
-int p2dof_set_home ();
+int xdof_init (char *lport, char *rport);
+int xdof_set_home ();
 //speed values
 #define P2DOF_SPD_GEAR1   0x02EE
 #define P2DOF_SPD_GEAR2   0x04E2
@@ -367,27 +463,23 @@ int p2dof_set_home ();
 #define P2DOF_SPD_GEAR5   0x0ABE
 #define P2DOF_SPD_GEAR6   0x0CB2
 #define P2DOF_SPD_GEAR7   0x0EA6
-int p2dof_set_speed (int spd);
-int p2dof_set_pos (int *pdat);
-int p2dof_set_poss (int *pdat);
-int p2dof_release ();
-int p2dof_fill_fds (struct pollfd fds[], int idx);
+int xdof_set_speed (int spd);
+int xdof_set_pos (int *pdat);
+int xdof_set_poss (int *pdat);
+int xdof_release ();
+int xdof_fill_fds (struct pollfd fds[]);
 
-p2dof mfc2dof = {-1,-1, 0,0, 0,0};
-
-#include <termios.h>
 void cfmakeraw(struct termios *termios_p);
 
 //
 static libusb_context* ctx = NULL;
 static libusb_device** devs = NULL;
 static ssize_t cnt = 0;
-#define FTDI_VID  0x0403
-#define FTDI_PID  0x6001
-static char scnports[2][256] = {"/dev/ttyUSB0", "/dev/ttyUSB1"};
-static char *lscnp = scnports[0], *rscnp = scnports[1];
+static char scnports[DOF_MAX][255] = {"/dev/ttyUSB0", "/dev/ttyUSB1"};
 
-static int p2scn_find ()
+static int scnAdof_set_pos (int *pdata);
+
+static int scnAdof_find ()
 {
   int dev_i, ret, bp, pk = 0;
   libusb_device_handle *handle = NULL;
@@ -424,7 +516,7 @@ static int p2scn_find ()
     if (!ret)
     {
       //printf ("\n#i:USB found %04x:%04x", desc.idVendor, desc.idProduct);
-      if (desc.idVendor == FTDI_VID && desc.idProduct == FTDI_PID)
+      if (desc.idVendor == odvid && desc.idProduct == odpid)
       {
         ret = libusb_open (devs[dev_i], &handle);
         if (!ret)
@@ -432,15 +524,15 @@ static int p2scn_find ()
           ret = libusb_get_string_descriptor_ascii (handle, desc.iManufacturer, string, sizeof(string));
           if (!ret)
             continue;
-          bp = snprintf (description, 256 - bp, "%s", string);
+          bp = snprintf (description, 255 - bp, "%s", string);
           ret = libusb_get_string_descriptor_ascii (handle, desc.iProduct, string, sizeof(string));
           if (!ret)
             continue;
-          bp += snprintf (description + bp, 256 - bp, " %s", string);
+          bp += snprintf (description + bp, 255 - bp, " %s", string);
           ret = libusb_get_string_descriptor_ascii (handle, desc.iSerialNumber, string, sizeof(string));
           if (!ret)
             continue;
-          bp += snprintf (description + bp, 256 - bp, " %s", string);
+          bp += snprintf (description + bp, 255 - bp, " %s", string);
           //
           char *ldp = description;
           while (*ldp++ > 0)
@@ -448,27 +540,34 @@ static int p2scn_find ()
               *ldp = '_';
           //
           //printf ("\n#i:%s", description);
-          if (pk < 2)
-            snprintf (scnports[pk++], 256, "/dev/serial/by-id/usb-%s-if00-port0", description);
+          if (pk < DOF_MAX)
+            snprintf (scnports[pk++], 254, "/dev/serial/by-id/usb-%s-if00-port0", description);
           //
           libusb_close (handle);
         }
       }
     }
   }//for
-  //did we find at least 2 FTDI ports?
-  if (pk > 1)
+  //sort the ports such that we can assign them accordingly
+  int i, j;
+  if (pk > 0)
   {
-    //sort them alphabetically
-    if (strcmp (scnports[0], scnports[1]) > 0)
+    for (i = 0; i < pk; i++)
     {
-      lscnp = scnports[1]; rscnp = scnports[0];
+      for (j = i + 1; j < pk; j++)
+      {
+        if(strcmp (scnports[i], scnports[j]) > 0)
+        {
+          strcpy ((char *)string, scnports[i]);
+          strcpy (scnports[i], scnports[j]);
+          strcpy (scnports[j], (char *)string);
+        }
+      }
     }
-    else
-    {
-      lscnp = scnports[0]; rscnp = scnports[1];
-    }
+    for (i = 0; i < pk; i++)
+      printf ("\n#i:DOF adapter #%d on port '%s'", i + 1, scnports[i]);
   }
+  //
   //always get the new list of devices
   if (devs)
   {
@@ -479,168 +578,316 @@ static int p2scn_find ()
   return pk;
 }
 
-static int p2scn_home_init ()
+static int scnAdof_home_init ();
+
+static int scnAdof_init (char *lport, char *rport)
+{
+  //char lscnp[] = "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A504KGF1-if00-port0";
+  //char rscnp[] = "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A504KGHA-if00-port0";
+  //
+  int scnpk = scnAdof_find ();
+  if (scnpk == 0)
+  {
+    printf ("\n#E:found %d DOF adapters", scnpk);
+    return -1;
+  }
+  //
+  if (scnpk <= DOF_MAX)
+    dof_count = scnpk;
+  else
+  {
+    printf ("\n#E:found %d DOF adapters - we'll handle only the first 6", scnpk);
+    dof_count = DOF_MAX;
+  }
+  //set-up DOF control port
+  int i;
+  for (i = 0; i < DOF_MAX; i++)
+  {
+    mfc_dof[i].ctlport = NULL;
+    mfc_dof[i].ctlfd = -1;
+    mfc_dof[i].pos = 0;
+  }
+  //
+  switch (dof_count)
+  {
+    case 1: //1 DOF: back
+      mfc_dof[dof_back].ctlport = scnports[0];
+      break;
+    case 2: //2 DOF: left, right
+      mfc_dof[dof_left].ctlport = scnports[0];
+      mfc_dof[dof_right].ctlport = scnports[1];
+      break;
+    case 3: //3 DOF: left, right, back
+      mfc_dof[dof_left].ctlport = scnports[0];
+      mfc_dof[dof_right].ctlport = scnports[1];
+      mfc_dof[dof_back].ctlport = scnports[2];
+      break;
+    case 4: //4 DOF: left, right, aleft, aright
+      mfc_dof[dof_left].ctlport = scnports[0];
+      mfc_dof[dof_right].ctlport = scnports[1];
+      mfc_dof[dof_aleft].ctlport = scnports[2];
+      mfc_dof[dof_aright].ctlport = scnports[3];
+      break;
+    case 5: //5 DOF: left, right, aleft, aright, back
+      mfc_dof[dof_left].ctlport = scnports[0];
+      mfc_dof[dof_right].ctlport = scnports[1];
+      mfc_dof[dof_aleft].ctlport = scnports[2];
+      mfc_dof[dof_aright].ctlport = scnports[3];
+      mfc_dof[dof_back].ctlport = scnports[4];
+      break;
+    case 6: //6 DOF: left, right, aleft, aright, back, aback
+      mfc_dof[dof_left].ctlport = scnports[0];
+      mfc_dof[dof_right].ctlport = scnports[1];
+      mfc_dof[dof_aleft].ctlport = scnports[2];
+      mfc_dof[dof_aright].ctlport = scnports[3];
+      mfc_dof[dof_back].ctlport = scnports[4];
+      mfc_dof[dof_aback].ctlport = scnports[5];
+      break;
+    default:
+      printf ("\n#E:cannot manage %d DOF adapters", dof_count);
+      return -1;
+  }
+  //set-up FDs
+  struct termios options;
+  for (i = 0; i < DOF_MAX; i++)
+  {
+    if (mfc_dof[i].ctlport)
+    {
+      //open
+      mfc_dof[i].ctlfd = open (mfc_dof[i].ctlport, O_RDWR | O_NOCTTY | O_NONBLOCK);
+      if (mfc_dof[i].ctlfd == -1)
+      {
+        printf ("\n#E:DOF adapter not found on %s", mfc_dof[i].ctlport);
+        return -1;
+      }
+      //set options
+      tcgetattr (mfc_dof[i].ctlfd, &options);
+      //
+      cfsetispeed (&options, B9600);
+      cfsetospeed (&options, B9600);
+      cfmakeraw (&options);
+      //
+      if (tcsetattr (mfc_dof[i].ctlfd, TCSANOW, &options) < 0)
+      {
+        printf ("\n#E:cannot set options for DOF adapter %s", mfc_dof[i].ctlport);
+        return -1;
+      }
+      printf("\n#i:connected to DOF#%d '%s', on %d", i + 1, mfc_dof[i].ctlport, mfc_dof[i].ctlfd);
+      //check adapter
+      if (scn_get_status (mfc_dof[i].ctlfd) == 0)
+      {
+        printf ("\n#E:motion platform not responding, bailing out");
+        return -1;
+      }
+    }
+  }
+  //
+  scnAdof_home_init ();
+  //
+  return 1;
+}
+
+int xdof_init (char *lport, char *rport)
+{
+  switch (out_ifx)
+  {
+    case oi_arduino:
+      break;
+    case oi_scn:
+      return scnAdof_init (NULL, NULL);
+    default: //oi_dummy
+      ;
+  }
+  return 1;
+}
+
+static int scnAdof_set_home ();
+static int scnAdof_home_init ()
 {
   //send on
   printf ("\n#i:homing platform..");
+  fflush (stdout);
   //
-  scn_set_son (mfc2dof.lfd);
-  scn_set_son (mfc2dof.rfd);
-  //send home
-  scn_set_home (mfc2dof.lfd);
-  scn_set_home (mfc2dof.rfd);
-  //wait for position to be reported as 0
-  int mk = 10;
-  while (scn_get_pos (mfc2dof.lfd) && mk)
+  int i, j;
+  char rsp[20];
+  for (i = 0; i < DOF_MAX; i++)
   {
-    usleep (200000);
-    mk--;
+    if (mfc_dof[i].ctlfd > 0)
+    {
+      //turn DOF on
+      scn_set_son (mfc_dof[i].ctlfd);
+      //set speed to min
+      scn_set_vel (mfc_dof[i].ctlfd, P2DOF_SPD_GEAR1, DEFA_ACMD);
+      scn_get_response (mfc_dof[i].ctlfd, rsp);
+      //send home
+      scn_set_home (mfc_dof[i].ctlfd);
+      //
+      mfc_dof[i].amin = 0;
+      mfc_dof[i].amax = 0x3FFFFFFF;
+      printf("\n#i:homing DOF#%d '%s', on %d", i + 1, mfc_dof[i].ctlport, mfc_dof[i].ctlfd);
+      fflush (stdout);
+    }
   }
-  //
-  mk = 10;
-  while (scn_get_pos (mfc2dof.rfd) && mk)
+  //wait for position to be reported as 0
+  int mk;
+  for (j = 0; j < 10; j++)
   {
-    usleep (200000);
-    mk--;
+    mk = 0;
+    for (i = 0; i < DOF_MAX; i++)
+    {
+      if (mfc_dof[i].ctlfd > 0)
+      {
+        mfc_dof[i].amin = scn_get_pos (mfc_dof[i].ctlfd);
+        if (mfc_dof[i].amin != 0)
+        {
+          mk ++;
+          sleep (1);
+        }
+      }
+    }
+    //we're done
+    if (mk == 0)
+      break;
+  }
+  if (mk)
+  {
+    printf ("\n#w:one of the DOFs didn't home properly!");
   }
   //look for range max
-  //flush the speed response
-  p2dof_set_speed (P2DOF_SPD_GEAR1);  //slow
   //set both to negative max allowed by the driver
   printf ("\n#i:looking for max positions..");
   fflush (stdout);
-  //set to -edge: 0xC0000000
-  scn_set_pos (mfc2dof.lfd, 0xC0000000);
-  //set to -edge: 0xC0000000
-  scn_set_pos (mfc2dof.rfd, 0xC0000000);
-  int crpos = 0x3FFFFFFF, rpos;
-  for (rpos = scn_get_pos (mfc2dof.rfd); crpos != rpos; crpos = scn_get_pos (mfc2dof.rfd))
+  for (i = 0; i < DOF_MAX; i++)
   {
-    usleep (200000);
-    rpos = crpos;
+    if (mfc_dof[i].ctlfd > 0)
+    {
+      //set to -edge: 0xC0000000
+      scn_set_pos (mfc_dof[i].ctlfd, 0xC0000000);
+    }
   }
-  //
-  int clpos = 0x3FFFFFFF, lpos;
-  for (lpos = scn_get_pos (mfc2dof.lfd); clpos != lpos; clpos = scn_get_pos (mfc2dof.lfd))
+  //wait for position to not change
+  int cmax;
+  for (j = 0; j < 10; j++)
   {
-    usleep (200000);
-    lpos = clpos;
+    mk = 0;
+    for (i = 0; i < DOF_MAX; i++)
+    {
+      if (mfc_dof[i].ctlfd > 0)
+      {
+        cmax = scn_get_pos (mfc_dof[i].ctlfd);
+        if (mfc_dof[i].amax != cmax)
+        {
+          mk ++;
+          mfc_dof[i].amax = cmax;
+          sleep (1);
+        }
+      }
+    }
+    //we're done
+    if (mk == 0)
+      break;
   }
-  actl_max = lpos;
-  actr_max = rpos;
-  //compute 5% deadzone range
-  printf (" left range [0..%d], right range [0..%d]", actl_max, actr_max);
-  int _dz = actl_max * 3 / 100;
-  l_min = _dz;
-  l_max = actl_max - _dz;
-  _dz = actr_max * 3 / 100;
-  r_min = _dz;
-  r_max = actr_max - _dz;
-  printf ("\n#i:actual left range [%d..%d], right range [%d..%d]", l_min, l_max, r_min, r_max);
+  if (mk)
+  {
+    printf ("\n#w:one of the DOFs didn't extend properly!");
+  }
+  //adjust work ranges by 3%
+  int wdz;
+  for (i = 0; i < DOF_MAX; i++)
+  {
+    if (mfc_dof[i].ctlfd > 0)
+    {
+      wdz = (mfc_dof[i].amax - mfc_dof[i].amin) * 3 / 100;
+      mfc_dof[i].cmin = wdz;
+      mfc_dof[i].cmax = mfc_dof[i].amax - wdz;
+      printf("\n#i:DOF#%d range %d..%d, usable %d..%d", i + 1,
+          mfc_dof[i].amin, mfc_dof[i].amax, mfc_dof[i].cmin, mfc_dof[i].cmax);
+    }
+  }
   //
   printf ("\n#i:wait for homing to finish..");
   fflush (stdout);
-  p2dof_set_home ();
+  //
+  scnAdof_set_home ();
+  sleep (3);
   printf (" homing done");
   fflush (stdout);
   //
   return 1;
 }
 
-int p2dof_home_init ()
+int xdof_home_init ()
 {
-  return p2scn_home_init ();
+  switch (out_ifx)
+  {
+    case oi_arduino:
+      break;
+    case oi_scn:
+      return scnAdof_home_init ();
+    default: //oi_dummy
+      ;
+  }
+  return 1;
 }
 
-static int p2scn_init (char *lport, char *rport)
+int scnAdof_fill_fds(struct pollfd fds[])
 {
-  //char lscnp[] = "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A504KGF1-if00-port0";
-  //char rscnp[] = "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A504KGHA-if00-port0";
-  //
-  int scnpk = p2scn_find ();
-  if (scnpk < 2)
+  int dk = 0, i;
+  for (i = 0; i < DOF_MAX; i++)
   {
-    printf ("\n#E:found %d of 2 FTDI adapters for SCN", scnpk);
-    return -1;
+    if (mfc_dof[i].ctlfd > 0)
+    {
+      fds[dk].fd = mfc_dof[i].ctlfd;
+      fds[dk].events = POLLIN | POLLHUP;
+      dk++;
+    }
   }
-  //
-  mfc2dof.lfd = open (lscnp, O_RDWR | O_NOCTTY | O_NONBLOCK);
-  if (mfc2dof.lfd == -1)
-  {
-    printf ("\n#W:SCN L not found on %s", lscnp);
-    return -1;
-  }
-  mfc2dof.rfd = open (rscnp, O_RDWR | O_NOCTTY | O_NONBLOCK);
-  if (mfc2dof.rfd == -1)
-  {
-    printf ("\n#W:SCN R not found on %s", rscnp);
-    close (mfc2dof.lfd);
-    return -1;
-  }
-  struct termios options;
-  tcgetattr (mfc2dof.lfd, &options);
-  //
-  cfsetispeed (&options, B9600);
-  cfsetospeed (&options, B9600);
-  cfmakeraw (&options);
-  //
-  if (tcsetattr (mfc2dof.lfd, TCSANOW, &options) < 0)
-  {
-    printf ("\n#E:can't set L serial port options '%s'", lscnp);
-    close (mfc2dof.lfd);
-    close (mfc2dof.rfd);
-    return -1;
-  }
-  //right actuator
-  tcgetattr (mfc2dof.rfd, &options);
-  //
-  cfsetispeed (&options, B9600);
-  cfsetospeed (&options, B9600);
-  cfmakeraw (&options);
-  //
-  if (tcsetattr (mfc2dof.rfd, TCSANOW, &options) < 0)
-  {
-    printf ("\n#E:can't set R serial port options '%s'", rscnp);
-    close (mfc2dof.lfd);
-    close (mfc2dof.rfd);
-    return -1;
-  }
-  //home actuators
-  printf("\n#i:connected to L '%s', on %d", lscnp, mfc2dof.lfd);
-  printf("\n#i:connected to R '%s', on %d", rscnp, mfc2dof.rfd);
-  //
-  if (scn_get_status (mfc2dof.lfd) == 0 || scn_get_status (mfc2dof.rfd) == 0)
-  {
-    printf ("\n#E:motion platform not responding, bailing out");
-    _done = 1;
-    return -1;
-  }
-  //
-  p2dof_home_init ();
-  //
-  return mfc2dof.lfd;
+  return dk;
 }
 
-int p2dof_init (char *lport, char *rport)
+int xdof_fill_fds(struct pollfd fds[])
 {
-  return p2scn_init (lport, rport);
+  switch (out_ifx)
+  {
+    case oi_arduino:
+      break;
+    case oi_scn:
+      return scnAdof_fill_fds (fds);
+    default: //oi_dummy
+      ;
+  }
+  return 0;
 }
 
-static int p2scn_release ()
+static int scnAdof_release ()
 {
-  //send off
-  scn_set_soff (mfc2dof.lfd);
-  scn_set_soff (mfc2dof.rfd);
-  //
-  close (mfc2dof.lfd);
-  close (mfc2dof.rfd);
+  int i;
+  for (i = 0; i < DOF_MAX; i++)
+  {
+    if (mfc_dof[i].ctlfd > 0)
+    {
+      //turn DOF off
+      scn_set_soff (mfc_dof[i].ctlfd);
+      //close
+      close (mfc_dof[i].ctlfd);
+    }
+  }
   //
   return 0;
 }
 
-int p2dof_release ()
+int xdof_release ()
 {
-  return p2scn_release ();
+  switch (out_ifx)
+  {
+    case oi_arduino:
+      break;
+    case oi_scn:
+      return scnAdof_release ();
+    default: //oi_dummy
+      ;
+  }
+  return 1;
 }
 #if 0
 static int p2scn_fill_fds (struct pollfd fds[], int idx)
@@ -654,19 +901,37 @@ static int p2scn_fill_fds (struct pollfd fds[], int idx)
 }
 #endif
 static int _lpkt[MFC_PKT_SIZE] = {0};
-static int p2scn_set_home ()
+static int scnAdof_set_home ()
 {
   char rsp[20];
-  if (scn_get_status (mfc2dof.lfd) == 0 || scn_get_status (mfc2dof.rfd) == 0)
+  int i; for (i = 0; i < DOF_MAX; i++)
   {
-    printf ("\n#e:motion platform not responding, bailing out");
-    _done = 1;
-    return -1;
+    if (mfc_dof[i].ctlfd > 0)
+    {
+      if (scn_get_status (mfc_dof[i].ctlfd) == 0)
+      {
+        printf ("\n#E:motion platform not responding, bailing out");
+        _done = 1;
+        return -1;
+      }
+      //set speed to min
+      scn_set_vel (mfc_dof[i].ctlfd, P2DOF_SPD_GEAR1, DEFA_ACMD);
+      scn_get_response (mfc_dof[i].ctlfd, rsp);
+    }
   }
   //flush the speed response
-  p2dof_set_speed (P2DOF_SPD_GEAR1);  //slow
-  //flush the positioning response
-  p2dof_set_pos (_lpkt);
+  scnAdof_set_pos (_lpkt);
+  //
+  for (i = 0; i < DOF_MAX; i++)
+  {
+    if (mfc_dof[i].ctlfd > 0)
+    {
+      scn_get_response (mfc_dof[i].ctlfd, rsp);
+    }
+  }
+  //
+#if 0
+  //
   scn_get_response (mfc2dof.lfd, rsp);
   scn_get_response (mfc2dof.rfd, rsp);
   //
@@ -685,13 +950,24 @@ static int p2scn_set_home ()
     usleep (200000);
     mk--;
   }
+#endif
   //
   return 0;
 }
 
-int p2dof_set_home ()
+int xdof_set_home ()
 {
-  return p2scn_set_home ();
+  switch (out_ifx)
+  {
+    case oi_arduino:
+      break;
+    case oi_scn:
+      return scnAdof_set_home ();
+    default: //oi_dummy
+      ;
+  }
+  //
+  return 1;
 }
 
 #ifdef _USE_PIGPIO_
@@ -734,9 +1010,23 @@ doc: accel order default value set range is 0001H..07FFH with unit of 0.1r/min
 5 fastest: 1250 x 0.2rpm = 250rpm 0x04E2 
 6 slowest: 750  x 0.2rpm = 150rpm 0x02EE
 */
-int p2dof_set_speed (int spd)
+static int scnAdof_set_speed (int spd)
 {
   char rsp[20];
+  int i;
+  for (i = 0; i < DOF_MAX; i++)
+  {
+    if (mfc_dof[i].ctlport)
+    {
+      scn_set_vel (mfc_dof[i].ctlfd, spd, DEFA_ACMD);
+      scn_get_response (mfc_dof[i].ctlfd, rsp);
+    }
+  }
+  return 0;
+}
+
+int xdof_set_speed (int spd)
+{
   if (_odbg)
     printf ("\n#i:motion %d speed 0x%04X", spd, spd);
   //
@@ -744,12 +1034,17 @@ int p2dof_set_speed (int spd)
     spd = P2DOF_SPD_GEAR1;
   
   //
-  scn_set_vel (mfc2dof.lfd, spd, DEFA_ACMD);
-  scn_get_response (mfc2dof.lfd, rsp);
-  scn_set_vel (mfc2dof.rfd, spd, DEFA_ACMD);
-  scn_get_response (mfc2dof.rfd, rsp);
+  switch (out_ifx)
+  {
+    case oi_arduino:
+      break;
+    case oi_scn:
+      return scnAdof_set_speed (spd);
+    default: //oi_dummy
+      ;
+  }
   //
-  return 0;
+  return 1;
 }
 
 /*
@@ -780,13 +1075,9 @@ pkt[7] = 0;         //heave
 pkt[8] = 0;         //speed
 */
 
-int p2dof_set_poss (int *pdata)
+int xdof_set_poss (int *pdata)
 {
-  //todo: set speed
-  if (0)  //setting the speed is slow for now, don't do it
-    p2dof_set_speed (pdata[8]);
-  //
-  p2dof_set_pos (pdata);
+  xdof_set_pos (pdata);
   //
   return 0;
 }
@@ -794,72 +1085,229 @@ int p2dof_set_poss (int *pdata)
 //2DOF motion positions
 int dof2l = 0;
 int dof2r = 0;
+int dof1b = 0;
 #define SMOOTHMOVE  50
-static int p2scn_set_pos (int *pdata)
+static int scndof_move (int idx)
 {
-  //simplest profiling EVER!
-  #if 0
-  dof2l = pdata[MFC_PIPITCH] + pdata[MFC_PIROLL]; //pitch + roll
-  dof2r = pdata[MFC_PIPITCH] - pdata[MFC_PIROLL]; //pitch - roll
-  #else
-  dof2l = pdata[MFC_PIPITCH] + pdata[MFC_PISURGE] + pdata[MFC_PIHEAVE] + pdata[MFC_PIROLL] + pdata[MFC_PISWAY];
-  dof2r = pdata[MFC_PIPITCH] + pdata[MFC_PISURGE] + pdata[MFC_PIHEAVE] - pdata[MFC_PIROLL] - pdata[MFC_PISWAY];
-  #endif
-  //
-  if (_odbg)
-    printf ("\n#i:in pos L%d, R%d", dof2l, dof2r);
-  //left
-  dof2l = get_cmap (dof2l, -10000, 10000, l_max, l_min);
-  //right
-  dof2r = get_cmap (dof2r, -10000, 10000, r_max, r_min);
-  //smooth curve: shave some positions to avoid the motor to move constantly
-  dof2l -= (int)dof2l % SMOOTHMOVE;
-  dof2r -= (int)dof2r % SMOOTHMOVE;
-  //avoid an issue with lack of move for this position
-  if (dof2l == -5000)
-    dof2l++;
-  if (dof2r == -5000)
-    dof2r++;
-  //char rsp[20];
-  if (_omot == 0)
+  if (mfc_dof[idx].ctlfd > 0)
+    scn_set_pos (mfc_dof[idx].ctlfd, mfc_dof[idx].pos);
+  return 1;
+}
+
+static int dmyAdof_set_pos (int *pdata)
+{
+  int *_cpkt = pdata;
+  printf ("\n#i.roll:% 6d (r: % 5d / s: % 5d) | pitch: % 6d \t(p: % 5d / s: % 5d / h: % 5d)",
+    _cpkt[MFC_PIROLL] + _cpkt[MFC_PISWAY], _cpkt[MFC_PIROLL], _cpkt[MFC_PISWAY],
+    _cpkt[MFC_PIPITCH] + _cpkt[MFC_PISURGE] + _cpkt[MFC_PIHEAVE],
+    _cpkt[MFC_PIPITCH], _cpkt[MFC_PISURGE], _cpkt[MFC_PIHEAVE]);
+  return 1;
+}
+
+static int scnAdof_set_pos (int *pdata)
+{
+  //do some common computing here, to be reused
+  if (dof_count > 1 && dof_count < 6)
   {
+    dof2l = pdata[MFC_PIPITCH] + pdata[MFC_PISURGE] + pdata[MFC_PIHEAVE] + pdata[MFC_PIROLL] + pdata[MFC_PISWAY];
+    dof2r = pdata[MFC_PIPITCH] + pdata[MFC_PISURGE] + pdata[MFC_PIHEAVE] - pdata[MFC_PIROLL] - pdata[MFC_PISWAY];
+    if (_odbg)
+      printf ("\n#i:in pos L%d, R%d", dof2l, dof2r);
+    //left
+    mfc_dof[dof_left].pos  = get_cmap (dof2l, -10000, 10000, mfc_dof[dof_left].cmax, mfc_dof[dof_left].cmin);
+    //smooth curve: shave some positions to avoid the motor to move constantly
+    mfc_dof[dof_left].pos -= mfc_dof[dof_left].pos % SMOOTHMOVE;
+    //avoid an issue with lack of move for this position
+    if (mfc_dof[dof_left].pos == -5000)
+      mfc_dof[dof_left].pos++;
+    //right
+    mfc_dof[dof_right].pos  = get_cmap (dof2r, -10000, 10000, mfc_dof[dof_right].cmax, mfc_dof[dof_right].cmin);
+    //smooth curve: shave some positions to avoid the motor to move constantly
+    mfc_dof[dof_right].pos -= mfc_dof[dof_right].pos % SMOOTHMOVE;
+    //avoid an issue with lack of move for this position
+    if (mfc_dof[dof_right].pos == -5000)
+      mfc_dof[dof_right].pos++;
+    if (dof_count > 3)
+    {
+      //left
+      mfc_dof[dof_aleft].pos  = get_cmap (dof2l, -10000, 10000, mfc_dof[dof_aleft].cmax, mfc_dof[dof_aleft].cmin);
+      //smooth curve: shave some positions to avoid the motor to move constantly
+      mfc_dof[dof_aleft].pos -= mfc_dof[dof_aleft].pos % SMOOTHMOVE;
+      //avoid an issue with lack of move for this position
+      if (mfc_dof[dof_aleft].pos == -5000)
+        mfc_dof[dof_aleft].pos++;
+      //right
+      mfc_dof[dof_aright].pos  = get_cmap (dof2r, -10000, 10000, mfc_dof[dof_aright].cmax, mfc_dof[dof_aright].cmin);
+      //smooth curve: shave some positions to avoid the motor to move constantly
+      mfc_dof[dof_aright].pos -= mfc_dof[dof_aright].pos % SMOOTHMOVE;
+      //avoid an issue with lack of move for this position
+      if (mfc_dof[dof_aright].pos == -5000)
+        mfc_dof[dof_aright].pos++;
+      //
+    }
+  }
+  //do we use the back / yaw dof?
+  if (mfc_dof[dof_back].ctlfd > 0)
+  {
+    dof1b = pdata[MFC_PIYAW];
+    if (_odbg)
+      printf ("\n#i:back pos R%d", dof1b);
+    dof1b = get_cmap (dof1b, -10000, 10000, mfc_dof[dof_back].cmax, mfc_dof[dof_back].cmin);
+    //smooth curve: shave some positions to avoid the motor to move constantly
+    mfc_dof[dof_back].pos -= mfc_dof[dof_back].pos % SMOOTHMOVE;
+    //avoid an issue with lack of move for this position
+    if (mfc_dof[dof_back].pos == -5000)
+      mfc_dof[dof_back].pos++;
+    //move it to position
+    scn_set_pos (mfc_dof[dof_back].ctlfd, mfc_dof[dof_back].pos);
+    //scn_get_response (mfc_dof[dof_back].ctlfd, rsp);
+  }
+    //left
+    scndof_move (dof_left);
+    //right
+    scndof_move (dof_right);
+    //alt left
+    scndof_move (dof_aleft);
+    //alt right
+    scndof_move (dof_aright);
+    //back
+    scndof_move (dof_back);
+    //alt back
+    scndof_move (dof_aback);
+    //
     if (_odbg)
     {
-      printf ("\n#i@%04d:cmap pos L%d, R%d", dtime_ms(), dof2l, dof2r);
-      int *_cpkt = pdata;
-      printf ("\n#i.roll:% 6d (r: % 5d / s: % 5d) | pitch: % 6d \t(p: % 5d / s: % 5d / h: % 5d)",
-        _cpkt[MFC_PIROLL] + _cpkt[MFC_PISWAY], _cpkt[MFC_PIROLL], _cpkt[MFC_PISWAY],
-        _cpkt[MFC_PIPITCH] + _cpkt[MFC_PISURGE] + _cpkt[MFC_PIHEAVE],
-        _cpkt[MFC_PIPITCH], _cpkt[MFC_PISURGE], _cpkt[MFC_PIHEAVE]);
+      printf ("\n#i@%04d:cmap pos L%d, R%d, B %d", dtime_ms(), dof2l, dof2r, dof1b);
+      dmyAdof_set_pos (pdata);
     }
-    scn_set_pos (mfc2dof.lfd, dof2l);
-    //scn_get_response (mfc2dof.lfd, rsp);
-    scn_set_pos (mfc2dof.rfd, dof2r);
-    //scn_get_response (mfc2dof.rfd, rsp);
 #ifdef _USE_PIGPIO_
     if (0)
       gpio_demo_spos (dof2l, dof2r);
 #endif
-  }
-  else
-  {
-    int *_cpkt = pdata;
-    if (_odbg)
-      printf ("\n#i.roll:% 6d (r: % 5d / s: % 5d) | pitch: % 6d \t(p: % 5d / s: % 5d / h: % 5d)",
-        _cpkt[MFC_PIROLL] + _cpkt[MFC_PISWAY], _cpkt[MFC_PIROLL], _cpkt[MFC_PISWAY],
-        _cpkt[MFC_PIPITCH] + _cpkt[MFC_PISURGE] + _cpkt[MFC_PIHEAVE],
-        _cpkt[MFC_PIPITCH], _cpkt[MFC_PISURGE], _cpkt[MFC_PIHEAVE]);
-    printf ("\n#i:pos L%d, R%d", dof2l, dof2r);
-  }
   //
   return 1;
 }
 
-int p2dof_set_pos (int *pdata)
+int xdof_set_pos (int *pdata)
 {
-  return p2scn_set_pos (pdata);
+  switch (out_ifx)
+  {
+    case oi_arduino:
+      break;
+    case oi_scn:
+      return scnAdof_set_pos (pdata);
+    default: //oi_dummy
+      dmyAdof_set_pos (pdata);
+  }
+  return 1;
 }
 
+int scnAdof_onoff (int on)
+{
+  int i;
+  if (on)
+  {
+    //on
+    for (i = 0; i < DOF_MAX; i++)
+      if (mfc_dof[i].ctlfd > 0)
+        //turn DOF on
+        scn_set_son (mfc_dof[i].ctlfd);
+  }
+  else
+  {
+    //off
+    for (i = 0; i < DOF_MAX; i++)
+      if (mfc_dof[i].ctlfd > 0)
+        //turn DOF off
+        scn_set_soff (mfc_dof[i].ctlfd);
+  }
+  return 1;
+}
+
+int xdof_start ()
+{
+  switch (out_ifx)
+  {
+    case oi_arduino:
+      break;
+    case oi_scn:
+      return scnAdof_onoff (1);
+    default: //oi_dummy
+      ;
+  }
+  return 1;
+}
+
+int xdof_stop ()
+{
+  switch (out_ifx)
+  {
+    case oi_arduino:
+      break;
+    case oi_scn:
+      return scnAdof_onoff (0);
+    default: //oi_dummy
+      ;
+  }
+  return 1;
+}
+
+//this takes long to execute
+int scnAdof_get_status ()
+{
+  int i; for (i = 0; i < DOF_MAX; i++)
+  {
+    if (mfc_dof[i].ctlfd > 0)
+    {
+      if (scn_get_status (mfc_dof[i].ctlfd) == 0)
+      {
+        return 0;
+      }
+    }
+  }
+  return 1;
+}
+
+int xdof_get_status ()
+{
+  switch (out_ifx)
+  {
+    case oi_arduino:
+      break;
+    case oi_scn:
+      return scnAdof_get_status ();
+    default: //oi_dummy
+      ;
+  }
+  return 1;
+}
+//
+int scnAdof_consume (int fd)
+{
+  int i; for (i = 0; i < DOF_MAX; i++)
+  {
+    if (mfc_dof[i].ctlfd == fd)
+    {
+      char rsp[20];
+      scn_get_response (fd, rsp);
+    }
+  }
+  return 1;
+}
+//
+int xdof_consume_fd (int fd)
+{
+  switch (out_ifx)
+  {
+    case oi_arduino:
+      break;
+    case oi_scn:
+      return scnAdof_consume (fd);
+    default: //oi_dummy
+      ;
+  }
+  return 1;
+}
 //
 // --
 //
@@ -896,25 +1344,25 @@ void mfc_mot_start ()
     switch (_omspeed)
     {
       case 2:
-        p2dof_set_speed (P2DOF_SPD_GEAR2); //slower
+        xdof_set_speed (P2DOF_SPD_GEAR2); //slower
         break;
       case 3:
-        p2dof_set_speed (P2DOF_SPD_GEAR3); //slow
+        xdof_set_speed (P2DOF_SPD_GEAR3); //slow
         break;
       case 4:
-        p2dof_set_speed (P2DOF_SPD_GEAR4); //normal
+        xdof_set_speed (P2DOF_SPD_GEAR4); //normal
         break;
       case 5:
-        p2dof_set_speed (P2DOF_SPD_GEAR5); //faster
+        xdof_set_speed (P2DOF_SPD_GEAR5); //faster
         break;
       case 6:
-        p2dof_set_speed (P2DOF_SPD_GEAR6); //even faster
+        xdof_set_speed (P2DOF_SPD_GEAR6); //even faster
         break;
       case 7:
-        p2dof_set_speed (P2DOF_SPD_GEAR7); //fastest
+        xdof_set_speed (P2DOF_SPD_GEAR7); //fastest
         break;
       default:
-        p2dof_set_speed (P2DOF_SPD_GEAR1); //slowest
+        xdof_set_speed (P2DOF_SPD_GEAR1); //slowest
         break;
     }
     //kangAllStart ();
@@ -926,7 +1374,7 @@ void mfc_mot_add ()
 {
   if (mfc_motfd < 0)
   {
-    mfc_motfd = p2dof_init (NULL, NULL);
+    mfc_motfd = xdof_init (NULL, NULL);
     //
     if (mfc_motfd > 0)
       mfc_mot_start ();
@@ -941,14 +1389,8 @@ void mfc_mot_del ()
 {
   if (mfc_motfd > 0)
   {
-    //printf ("\n#i:homing motion platform..");
-    //fflush (stdout);
-    //p2dof_set_home ();
-    //kangLSetPosition (2040 + _odrv1);
-    //kangRSetPosition (2040 + _odrv2);
-    //usleep (1000000); //sleep 1sec to leave enough time for the last packet to be sent
     //stop for now
-    p2dof_release ();
+    xdof_release ();
   }
   mfc_motfd = -1;
   printf ("\n#w:MOT disconnected");
@@ -960,7 +1402,7 @@ void mfc_mot_stop ()
   printf ("\n#i:FFB OFF!");
   if (mfc_motfd > 0)
   {
-    p2dof_set_home ();
+    xdof_set_home ();
     printf ("\n#i:motion platform stopped");
   }
 }
@@ -981,7 +1423,6 @@ void mfc_setup_fds ()
   }
 }
 
-int axp = 0, ayp = 0;
 int main (int argc, char **argv)
 {
   env_init (argc, argv);
@@ -1009,8 +1450,10 @@ int main (int argc, char **argv)
   //
   //add command control pipe
   //mfc_fifoinp_new ();
-  int i, _mstart, mms = 0, cms, rkdrop = 0;
+  int rkntr = 0, rkffb = 0, rkdat = 0, rkdrop = 0;
+  int i, mms = 0, cms;
   int _motion = 1;
+  unsigned long mtime = 0;
   unsigned char buf[254];
   //
   struct pollfd fds[15];
@@ -1034,20 +1477,15 @@ int main (int argc, char **argv)
     //prep FDs
     memset((void*)fds, 0, sizeof(fds));
     poll_i = 0;
+    //add motion fd
+    if (mfc_motfd > 0)
+    {
+      poll_i = xdof_fill_fds (fds);
+    }
     //add server fd
     if (mfc_svrfd > 0)
     {
       fds[poll_i].fd = mfc_svrfd;
-      fds[poll_i].events = POLLIN | POLLHUP;
-      poll_i++;
-    }
-    //add motion fd
-    if (mfc_motfd > 0)
-    {
-      fds[poll_i].fd = mfc2dof.lfd;
-      fds[poll_i].events = POLLIN | POLLHUP;
-      poll_i++;
-      fds[poll_i].fd = mfc2dof.rfd;
       fds[poll_i].events = POLLIN | POLLHUP;
       poll_i++;
     }
@@ -1079,11 +1517,11 @@ int main (int argc, char **argv)
     else
     {
       pr = 0;
-      usleep (5000000); //5sec
+      sleep (1); //1sec
       printf (".");
       fflush (stdout);
       //check actuators status
-      if (scn_get_status (mfc2dof.lfd) == 0 || scn_get_status (mfc2dof.rfd) == 0)
+      if (xdof_get_status () == 0)
       {
         printf ("\n#e:motion platform not responding, bailing out");
         _done = 1;
@@ -1095,17 +1533,16 @@ int main (int argc, char **argv)
       //default dof mode
       fdof_mode = PKTT_0DOF;
       //check actuators status
-      if (scn_get_status (mfc2dof.lfd) == 0 || scn_get_status (mfc2dof.rfd) == 0)
+      if (xdof_get_status () == 0)
       {
         printf ("\n#e:motion platform not responding, bailing out");
         _done = 1;
       }
       //turn off motors
-      if (_motion && mfc_motfd > 0)
+      if (_motion)
       {
         _motion = 0;
-        scn_set_soff (mfc2dof.lfd);
-        scn_set_soff (mfc2dof.rfd);
+        xdof_stop ();
         printf ("\n#i@04%lu:STOP motion", mtime);
         //
 #ifdef _USE_PIGPIO_
@@ -1125,23 +1562,11 @@ int main (int argc, char **argv)
        * read/update timestamp
        */
       rtime += mtime;   //update run time
-      ffbtime += mtime;
-      if (0)
-        printf ("\n#i:mtime %lu vs ffbtime %lu", mtime, ffbtime);
-      if (ffbtime > 5000) //did we not have ffb data for more than 5s?
-      {
-        if (_mstart)
-        {
-          _mstart = 0;
-          //mfc_mot_stop ();
-        }
-      }
       //turn on motors
       if (_motion == 0)
       {
         _motion = 1;
-        scn_set_son (mfc2dof.lfd);
-        scn_set_son (mfc2dof.rfd);
+        xdof_start ();
         printf ("\n#i@04%lu:START motion", mtime);
       }
       //update ffb time
@@ -1157,7 +1582,7 @@ int main (int argc, char **argv)
         else
           continue;
         //
-        if (0) printf ("\n#i:%d polled", fds[i].fd);
+        if (1) printf ("\n#i:%d polled", fds[i].fd);
         //
         if(fds[i].revents & POLLIN || fds[i].revents & POLLPRI || fds[i].revents & POLLHUP )
         {
@@ -1189,7 +1614,7 @@ int main (int argc, char **argv)
           //MOTion
           /*
           */
-          if (fds[i].fd == mfc2dof.lfd || fds[i].fd == mfc2dof.rfd)//MOTion
+          if (xdof_consume_fd (fds[i].fd))//MOTion
           {
             //did we get a disconnect?
             if (fds[i].revents & POLLHUP)
@@ -1197,8 +1622,6 @@ int main (int argc, char **argv)
               mfc_mot_del();
               break;
             }
-            char rsp[20];
-            scn_get_response (fds[i].fd, rsp);
             //
             break;
           }//MOTion
@@ -1260,8 +1683,7 @@ int main (int argc, char **argv)
                     if (_odbg)
                       printf ("\n#i:%06lums motion type 0x%02x", (long unsigned int)mms, pkt[MFC_PIDOF]);
                     //using 2DOF, native or ffb
-                    //p2dof_set_poss (pkt[3], pkt[4], pkt[2]);
-                    p2dof_set_poss (pkt);
+                    xdof_set_poss (pkt);
                   }
                   //else
                     //rkdrop++;

@@ -55,6 +55,9 @@ pkt[8] = 0;         //speed
 #define PKTT_OUT    7
 #define PKTT_DEBUG  8
 
+#define MFC_POS_MIN (-10000)
+#define MFC_POS_MAX (10000)
+
 //pkt_dof_type
 //in 6DOF mode, all 6 forces are available discretly: wheel, ffb, vibration
 //  wroll, wpitch, froll, fpitch, vroll, vpitch

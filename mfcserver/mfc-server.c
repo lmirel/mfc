@@ -47,6 +47,10 @@
 #define NAME_LENGTH 128
 
 //int usleep(long usec);
+static int zeropkt[MFC_PKT_SIZE] = {0};
+
+static int inoAdof_set_home ();
+static int inoAdof_set_pos (int *pdata);
 
 int xdof_home_init ();
 
@@ -174,7 +178,13 @@ int stdin_process_message (char *buf)
 
 static void usage()
 {
-  printf("#usage: sudo mfc-server\n");
+  printf ("#usage: sudo mfc-server\n\n");
+  printf ("--output-device, -o 'vid:pid' of serial device identifier controlling the platform\n"\
+      "\t check your serial identifier with lsusb and you should see something similar to:\n"\
+      "\t \t2341:8036 Arduino SA Leonardo (CDC ACM, HID) - Arduino Micro\n"\
+      "\t \t2a03:0043 dog hunter AG Arduino Uno Rev3     - Arduino Uno\n"\
+      "\t \t0403:6001 Future Technology Devices International, Ltd FT232 USB-Serial (UART)");
+  printf ("\n");
 }
 
 typedef enum {
@@ -262,13 +272,21 @@ int env_init (int argc, char *argv[])
       break;
 
     case 'a': //use Arduino output interface
+      //ID 2341:8036 Arduino SA Leonardo (CDC ACM, HID) - micro
+      //ID 2a03:0043 dog hunter AG Arduino Uno Rev3     - uno
       out_ifx = oi_arduino;
+      if (odvid == 0 && odpid == 0)
+      {
+        odvid = 0x2341;
+        odpid = 0x8036;
+      }
       break;
 
     case 'n': //use Arduino output interface
       out_ifx = oi_scn;
 //#define FTDI_VID  0x0403
 //#define FTDI_PID  0x6001
+      //ID 0403:6001 Future Technology Devices International, Ltd FT232 USB-Serial (UART) IC
       if (odvid == 0 && odpid == 0)
       {
         odvid = 0x0403;
@@ -479,7 +497,7 @@ static char scnports[DOF_MAX][255] = {"/dev/ttyUSB0", "/dev/ttyUSB1"};
 
 static int scnAdof_set_pos (int *pdata);
 
-static int scnAdof_find ()
+static int xdof_find ()
 {
   int dev_i, ret, bp, pk = 0;
   libusb_device_handle *handle = NULL;
@@ -580,12 +598,84 @@ static int scnAdof_find ()
 
 static int scnAdof_home_init ();
 
-static int scnAdof_init (char *lport, char *rport)
+static int inoAdof_init ()
 {
   //char lscnp[] = "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A504KGF1-if00-port0";
   //char rscnp[] = "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A504KGHA-if00-port0";
   //
-  int scnpk = scnAdof_find ();
+  int scnpk = xdof_find ();
+  if (scnpk == 0)
+  {
+    printf ("\n#E:found %d DOF adapters", scnpk);
+    _done = 1;
+    return -1;
+  }
+  //
+  if (scnpk <= DOF_MAX)
+    dof_count = scnpk;
+  else
+  {
+    printf ("\n#E:found %d DOF adapters - we'll handle only the first 6", scnpk);
+    dof_count = DOF_MAX;
+  }
+  //set-up DOF control port
+  int i;
+  for (i = 0; i < DOF_MAX; i++)
+  {
+    mfc_dof[i].ctlport = NULL;
+    mfc_dof[i].ctlfd = -1;
+    mfc_dof[i].pos = 0;
+  }
+  //Arduino uses one FD for all axis
+  mfc_dof[dof_back].ctlport = scnports[0];
+  //set-up FDs
+  struct termios options;
+  i = dof_back;
+  if (mfc_dof[i].ctlport)
+  {
+    //open
+    mfc_dof[i].ctlfd = open (mfc_dof[i].ctlport, O_RDWR | O_NOCTTY | O_NONBLOCK);
+    if (mfc_dof[i].ctlfd == -1)
+    {
+      printf ("\n#E:DOF adapter not found on %s", mfc_dof[i].ctlport);
+      return -1;
+    }
+    //set options
+    tcgetattr (mfc_dof[i].ctlfd, &options);
+    //
+    cfsetispeed (&options, B9600);
+    cfsetospeed (&options, B9600);
+    cfmakeraw (&options);
+    //
+    if (tcsetattr (mfc_dof[i].ctlfd, TCSANOW, &options) < 0)
+    {
+      printf ("\n#E:cannot set options for DOF adapter %s", mfc_dof[i].ctlport);
+      return -1;
+    }
+    printf("\n#i:connected to DOF#%d '%s', on %d", 1, mfc_dof[i].ctlport, mfc_dof[i].ctlfd);
+    //check adapter
+    if (scn_get_status (mfc_dof[i].ctlfd) == 0)
+    {
+      printf ("\n#E:motion platform not responding, bailing out");
+      return -1;
+    }
+  }
+  //
+  //home the platform
+  mfc_dof[i].amin = 0;
+  mfc_dof[i].amax = 1023;
+  //
+  inoAdof_set_home ();
+  //
+  return 1;
+}
+
+static int scnAdof_init ()
+{
+  //char lscnp[] = "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A504KGF1-if00-port0";
+  //char rscnp[] = "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A504KGHA-if00-port0";
+  //
+  int scnpk = xdof_find ();
   if (scnpk == 0)
   {
     printf ("\n#E:found %d DOF adapters", scnpk);
@@ -692,9 +782,10 @@ int xdof_init (char *lport, char *rport)
   switch (out_ifx)
   {
     case oi_arduino:
+      inoAdof_init ();
       break;
     case oi_scn:
-      return scnAdof_init (NULL, NULL);
+      return scnAdof_init ();
     default: //oi_dummy
       ;
   }
@@ -859,6 +950,18 @@ int xdof_fill_fds(struct pollfd fds[])
   return 0;
 }
 
+static int inoAdof_release ()
+{
+  int i = dof_back;
+  if (mfc_dof[i].ctlfd > 0)
+  {
+    //close
+    close (mfc_dof[i].ctlfd);
+  }
+  //
+  return 0;
+}
+
 static int scnAdof_release ()
 {
   int i;
@@ -881,6 +984,7 @@ int xdof_release ()
   switch (out_ifx)
   {
     case oi_arduino:
+      inoAdof_release ();
       break;
     case oi_scn:
       return scnAdof_release ();
@@ -900,7 +1004,15 @@ static int p2scn_fill_fds (struct pollfd fds[], int idx)
   return 2;
 }
 #endif
-static int _lpkt[MFC_PKT_SIZE] = {0};
+
+static int inoAdof_set_home ()
+{
+  //flush the speed response
+  inoAdof_set_pos (zeropkt);
+  //
+  return 1;
+}
+
 static int scnAdof_set_home ()
 {
   char rsp[20];
@@ -920,7 +1032,7 @@ static int scnAdof_set_home ()
     }
   }
   //flush the speed response
-  scnAdof_set_pos (_lpkt);
+  scnAdof_set_pos (zeropkt);
   //
   for (i = 0; i < DOF_MAX; i++)
   {
@@ -960,6 +1072,7 @@ int xdof_set_home ()
   switch (out_ifx)
   {
     case oi_arduino:
+      inoAdof_set_home ();
       break;
     case oi_scn:
       return scnAdof_set_home ();
@@ -1087,6 +1200,7 @@ int dof2l = 0;
 int dof2r = 0;
 int dof1b = 0;
 #define SMOOTHMOVE  50
+#define INO_SMOOTHMOVE  5
 static int scndof_move (int idx)
 {
   if (mfc_dof[idx].ctlfd > 0)
@@ -1104,6 +1218,54 @@ static int dmyAdof_set_pos (int *pdata)
   return 1;
 }
 
+static char inocmd[12] = "XL--CXR--C";
+static int icl = 10;
+static int inoAdof_set_pos (int *pdata)
+{
+  //do some common computing here, to be reused
+  dof2l = pdata[MFC_PIPITCH] + pdata[MFC_PISURGE] + pdata[MFC_PIHEAVE] + pdata[MFC_PIROLL] + pdata[MFC_PISWAY];
+  dof2r = pdata[MFC_PIPITCH] + pdata[MFC_PISURGE] + pdata[MFC_PIHEAVE] - pdata[MFC_PIROLL] - pdata[MFC_PISWAY];
+  if (_odbg)
+    printf ("\n#i:in pos L%d, R%d", dof2l, dof2r);
+  //left
+  dof2l = get_cmap (dof2l, MFC_POS_MIN, MFC_POS_MAX, mfc_dof[dof_back].amin, mfc_dof[dof_back].amax);
+  //smooth curve: shave some positions to avoid the motor to move constantly
+  dof2l -= dof2l % INO_SMOOTHMOVE;
+  //avoid an issue with lack of move for this position
+  //right
+  dof2r = get_cmap (dof2r, MFC_POS_MIN, MFC_POS_MAX, mfc_dof[dof_back].amin, mfc_dof[dof_back].amax);
+  //smooth curve: shave some positions to avoid the motor to move constantly
+  dof2r -= dof2r % INO_SMOOTHMOVE;
+  //avoid an issue with lack of move for this position
+  inocmd[2] = *(((char *)&dof2l) + 1);
+  inocmd[3] = *(((char *)&dof2l));
+  inocmd[7] = *(((char *)&dof2r) + 1);
+  inocmd[8] = *(((char *)&dof2r));
+  if (0)
+  {
+    //alt back
+    if (write (mfc_dof[dof_back].ctlfd, inocmd, icl) != icl)
+    {
+      printf ("\n#E:DOF command '%s' failed for pos L%d, R%d", inocmd,
+          dof2l, dof2r);
+    }
+    printf ("\n#i:DOF cmd '%s', pos L%d, R%d", inocmd, dof2l, dof2r);
+  }
+  //
+  if (1||_odbg)
+  {
+    printf ("\n#i:DOF cmd 'XL<%d>CXR<%d>C' <%d,%d><%d,%d>, pos L%d, R%d",
+        inocmd[2] * 256 + inocmd[3], inocmd[7] * 256 + inocmd[8],
+        inocmd[2], inocmd[3], inocmd[7], inocmd[8], dof2l, dof2r);
+  }
+#ifdef _USE_PIGPIO_
+    if (0)
+      gpio_demo_spos (dof2l, dof2r);
+#endif
+  //
+  return 1;
+}
+
 static int scnAdof_set_pos (int *pdata)
 {
   //do some common computing here, to be reused
@@ -1114,14 +1276,14 @@ static int scnAdof_set_pos (int *pdata)
     if (_odbg)
       printf ("\n#i:in pos L%d, R%d", dof2l, dof2r);
     //left
-    mfc_dof[dof_left].pos  = get_cmap (dof2l, -10000, 10000, mfc_dof[dof_left].cmax, mfc_dof[dof_left].cmin);
+    mfc_dof[dof_left].pos  = get_cmap (dof2l, MFC_POS_MIN, MFC_POS_MAX, mfc_dof[dof_left].cmax, mfc_dof[dof_left].cmin);
     //smooth curve: shave some positions to avoid the motor to move constantly
     mfc_dof[dof_left].pos -= mfc_dof[dof_left].pos % SMOOTHMOVE;
     //avoid an issue with lack of move for this position
     if (mfc_dof[dof_left].pos == -5000)
       mfc_dof[dof_left].pos++;
     //right
-    mfc_dof[dof_right].pos  = get_cmap (dof2r, -10000, 10000, mfc_dof[dof_right].cmax, mfc_dof[dof_right].cmin);
+    mfc_dof[dof_right].pos  = get_cmap (dof2r, MFC_POS_MIN, MFC_POS_MAX, mfc_dof[dof_right].cmax, mfc_dof[dof_right].cmin);
     //smooth curve: shave some positions to avoid the motor to move constantly
     mfc_dof[dof_right].pos -= mfc_dof[dof_right].pos % SMOOTHMOVE;
     //avoid an issue with lack of move for this position
@@ -1130,14 +1292,14 @@ static int scnAdof_set_pos (int *pdata)
     if (dof_count > 3)
     {
       //left
-      mfc_dof[dof_aleft].pos  = get_cmap (dof2l, -10000, 10000, mfc_dof[dof_aleft].cmax, mfc_dof[dof_aleft].cmin);
+      mfc_dof[dof_aleft].pos  = get_cmap (dof2l, MFC_POS_MIN, MFC_POS_MAX, mfc_dof[dof_aleft].cmax, mfc_dof[dof_aleft].cmin);
       //smooth curve: shave some positions to avoid the motor to move constantly
       mfc_dof[dof_aleft].pos -= mfc_dof[dof_aleft].pos % SMOOTHMOVE;
       //avoid an issue with lack of move for this position
       if (mfc_dof[dof_aleft].pos == -5000)
         mfc_dof[dof_aleft].pos++;
       //right
-      mfc_dof[dof_aright].pos  = get_cmap (dof2r, -10000, 10000, mfc_dof[dof_aright].cmax, mfc_dof[dof_aright].cmin);
+      mfc_dof[dof_aright].pos  = get_cmap (dof2r, MFC_POS_MIN, MFC_POS_MAX, mfc_dof[dof_aright].cmax, mfc_dof[dof_aright].cmin);
       //smooth curve: shave some positions to avoid the motor to move constantly
       mfc_dof[dof_aright].pos -= mfc_dof[dof_aright].pos % SMOOTHMOVE;
       //avoid an issue with lack of move for this position
@@ -1152,7 +1314,7 @@ static int scnAdof_set_pos (int *pdata)
     dof1b = pdata[MFC_PIYAW];
     if (_odbg)
       printf ("\n#i:back pos R%d", dof1b);
-    dof1b = get_cmap (dof1b, -10000, 10000, mfc_dof[dof_back].cmax, mfc_dof[dof_back].cmin);
+    dof1b = get_cmap (dof1b, MFC_POS_MIN, MFC_POS_MAX, mfc_dof[dof_back].cmax, mfc_dof[dof_back].cmin);
     //smooth curve: shave some positions to avoid the motor to move constantly
     mfc_dof[dof_back].pos -= mfc_dof[dof_back].pos % SMOOTHMOVE;
     //avoid an issue with lack of move for this position
@@ -1199,6 +1361,7 @@ int xdof_set_pos (int *pdata)
   switch (out_ifx)
   {
     case oi_arduino:
+      inoAdof_set_pos (pdata);
       break;
     case oi_scn:
       return scnAdof_set_pos (pdata);
@@ -1313,7 +1476,7 @@ int xdof_consume_fd (int fd)
     default: //oi_dummy
       ;
   }
-  return 1;
+  return 0;
 }
 //
 // --

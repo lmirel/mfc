@@ -1241,18 +1241,14 @@ static int inoAdof_set_pos (int *pdata)
   inocmd[3] = *(((char *)&dof2l));
   inocmd[7] = *(((char *)&dof2r) + 1);
   inocmd[8] = *(((char *)&dof2r));
-  if (0)
+  //send command
+  if (write (mfc_dof[dof_back].ctlfd, inocmd, icl) != icl)
   {
-    //alt back
-    if (write (mfc_dof[dof_back].ctlfd, inocmd, icl) != icl)
-    {
-      printf ("\n#E:DOF command '%s' failed for pos L%d, R%d", inocmd,
-          dof2l, dof2r);
-    }
-    printf ("\n#i:DOF cmd '%s', pos L%d, R%d", inocmd, dof2l, dof2r);
+    printf ("\n#E:DOF command '%s' failed for pos L%d, R%d", inocmd,
+        dof2l, dof2r);
   }
   //
-  if (1||_odbg)
+  if (_odbg)
   {
     printf ("\n#i:DOF cmd 'XL<%d>CXR<%d>C' <%d,%d><%d,%d>, pos L%d, R%d",
         inocmd[2] * 256 + inocmd[3], inocmd[7] * 256 + inocmd[8],

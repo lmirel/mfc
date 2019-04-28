@@ -1287,6 +1287,8 @@ static int scnAdof_set_pos (int *pdata)
       mfc_dof[dof_right].pos++;
     if (dof_count > 3)
     {
+      dof2l = -pdata[MFC_PIPITCH] - pdata[MFC_PISURGE] - pdata[MFC_PIHEAVE] + pdata[MFC_PIROLL] + pdata[MFC_PISWAY];
+      dof2r = -pdata[MFC_PIPITCH] - pdata[MFC_PISURGE] - pdata[MFC_PIHEAVE] - pdata[MFC_PIROLL] - pdata[MFC_PISWAY];
       //left
       mfc_dof[dof_aleft].pos  = get_cmap (dof2l, MFC_POS_MIN, MFC_POS_MAX, mfc_dof[dof_aleft].cmax, mfc_dof[dof_aleft].cmin);
       //smooth curve: shave some positions to avoid the motor to move constantly

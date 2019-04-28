@@ -10,7 +10,7 @@ modification history
                adapted for motion feedback controller
 */
 
-#define MFC_VERSION "0.8.1"
+#define MFC_VERSION "0.9.2"
 
 /*
   int pkt_type;
@@ -54,6 +54,9 @@ pkt[8] = 0;         //speed
 #define PKTT_IN     6
 #define PKTT_OUT    7
 #define PKTT_DEBUG  8
+
+#define MFC_POS_MIN (-10000)
+#define MFC_POS_MAX (10000)
 
 //pkt_dof_type
 //in 6DOF mode, all 6 forces are available discretly: wheel, ffb, vibration

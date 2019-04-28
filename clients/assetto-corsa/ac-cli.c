@@ -528,7 +528,7 @@ int main (int argc, char **argv, char **envp)
       lminl = lmaxl = lminr = lmaxr = 0.0f;
       printf(".");
       fflush (stdout);
-      usleep (1000000);
+      sleep (1);
     }
               
     if (fdset[0].revents & POLLIN)

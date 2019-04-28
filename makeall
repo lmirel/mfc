@@ -1,5 +1,8 @@
 #!/bin/bash
 
+#disable this after first run
+#sudo apt install libusb-1.0-0-dev libudev-dev
+
 TOOLS="
 mfcserver
 mfcxtract"
@@ -26,17 +29,24 @@ do
   cd $TOOL
   #make clean > /dev/null
   make
-  cd ..
-  cd ..
+  cd ../..
 done
 
-mkdir _out
-cp mfcserver/mfc-main-svr _out/
-cp mfcxtract/mfc-xtract   _out/
-cp usbxtract/sw/usbxtract _out/usbxtractor-mfc
-cp clients/pcars/mfc-cli-pcars2     _out/
-cp clients/assetto-corsa/mfc-cli-ac _out/
-cp clients/cm-f1/mfc-cli-cm-f1      _out/
-cp clients/cm-dr/mfc-cli-cm-drally  _out/
+mkdir -p .mfc
+cp mfcserver/mfc-server .mfc/
+cp mfcxtract/mfc-xtract   .mfc/
+cp usbxtract/sw/usbxtract .mfc/usbxtract
+cp clients/pcars/mfc-cli-pcars2     .mfc/
+cp clients/assetto-corsa/mfc-cli-ac .mfc/
+cp clients/cm-f1/mfc-cli-cm-f1      .mfc/
+cp clients/cm-dr/mfc-cli-cm-drally  .mfc/
+
+#.tar.gz
+echo "compressing package.."
+#tar -zcvf tar-archive-name.tar.gz source-folder-name
+tar -zcvf mfc-v0.8.1-linux.tar.gz .mfc/*
+echo "package ready"
+#untar gz
+#tar -zxvf tar-archive-name.tar.gz
 
 echo "done."

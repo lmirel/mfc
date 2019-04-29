@@ -576,40 +576,43 @@ End With
       printf ("\n#i:pitch%% \t%d \t%d \t%d \troll%% \t%d \t%d \t%d", 
         _cpkt[MFC_PIPITCH], _cpkt[MFC_PISURGE], _cpkt[MFC_PIHEAVE], _cpkt[MFC_PIROLL], _cpkt[MFC_PISWAY], _cpkt[MFC_PIYAW]);
     //
-    int _newrange = 0;
-    for (int i = MFC_PIDOF + 1; i < MFC_PIDOF + 7; ++i)
+    if (0)
     {
-      if (_cpkt[i] < mpkt[i])
-      {
-        mpkt[i] = _cpkt[i];
-        _newrange = 1;
-      }
-      if (_cpkt[i] > Mpkt[i])
-      {
-        Mpkt[i] = _cpkt[i];
-        _newrange = 1;
-      }
-      //
-      if (0 && (_cpkt[i] < -550 || _cpkt[i] > 550))
-      {
-        printf ("\n#E:min value for %d is %d vs %d orig %.8f", i, mpkt[i], -550, fv[i]);
-        printf ("\n#E:MAX value for %d is %d vs %d orig %.8f", i, Mpkt[i], 550, fv[i]);
-        if (0)
-          printf ("\n#i:telem %s%.8f \t %s%.8f \t %s%.8f \t %s%.8f \t %s%.8f \t %s%.8f",
-            fv[MFC_PIPITCH]>=0.0f?" +":" ", fv[MFC_PIPITCH], fv[MFC_PISURGE]>=0.0f?" +":" ", fv[MFC_PISURGE],
-            fv[MFC_PIHEAVE]>=0.0f?" +":" ", fv[MFC_PIHEAVE], fv[MFC_PIROLL]>=0.0f?" +":" ", fv[MFC_PIROLL], 
-            fv[MFC_PISWAY]>=0.0f?" +":" ", fv[MFC_PISWAY], fv[MFC_PIYAW]>=0.0f?" +":" ", fv[MFC_PIYAW]);
-        if (0||_odbg)
-          printf ("\n#i:pitch \t%d \t%d \t%d \troll \t%d \t%d \t%d", 
-            _cpkt[MFC_PIPITCH], _cpkt[MFC_PISURGE], _cpkt[MFC_PIHEAVE], _cpkt[MFC_PIROLL], _cpkt[MFC_PISWAY], _cpkt[MFC_PIYAW]);
-      }
-      //
-      //if (_cpkt[i] < -550 || _cpkt[i] > 550)
-      //  _newrange = 1;
-    }
-    if (_newrange)
+      int _newrange = 0;
       for (int i = MFC_PIDOF + 1; i < MFC_PIDOF + 7; ++i)
-        printf ("\n#E:%d# [%d.. %d ..%d]", i, mpkt[i], _cpkt[i], Mpkt[i]);
+      {
+        if (_cpkt[i] < mpkt[i])
+        {
+          mpkt[i] = _cpkt[i];
+          _newrange = 1;
+        }
+        if (_cpkt[i] > Mpkt[i])
+        {
+          Mpkt[i] = _cpkt[i];
+          _newrange = 1;
+        }
+        //
+        if (0 && (_cpkt[i] < -550 || _cpkt[i] > 550))
+        {
+          printf ("\n#E:min value for %d is %d vs %d orig %.8f", i, mpkt[i], -550, fv[i]);
+          printf ("\n#E:MAX value for %d is %d vs %d orig %.8f", i, Mpkt[i], 550, fv[i]);
+          if (0)
+            printf ("\n#i:telem %s%.8f \t %s%.8f \t %s%.8f \t %s%.8f \t %s%.8f \t %s%.8f",
+              fv[MFC_PIPITCH]>=0.0f?" +":" ", fv[MFC_PIPITCH], fv[MFC_PISURGE]>=0.0f?" +":" ", fv[MFC_PISURGE],
+              fv[MFC_PIHEAVE]>=0.0f?" +":" ", fv[MFC_PIHEAVE], fv[MFC_PIROLL]>=0.0f?" +":" ", fv[MFC_PIROLL],
+              fv[MFC_PISWAY]>=0.0f?" +":" ", fv[MFC_PISWAY], fv[MFC_PIYAW]>=0.0f?" +":" ", fv[MFC_PIYAW]);
+          if (0||_odbg)
+            printf ("\n#i:pitch \t%d \t%d \t%d \troll \t%d \t%d \t%d",
+              _cpkt[MFC_PIPITCH], _cpkt[MFC_PISURGE], _cpkt[MFC_PIHEAVE], _cpkt[MFC_PIROLL], _cpkt[MFC_PISWAY], _cpkt[MFC_PIYAW]);
+        }
+        //
+        //if (_cpkt[i] < -550 || _cpkt[i] > 550)
+        //  _newrange = 1;
+      }
+      if (_newrange)
+        for (int i = MFC_PIDOF + 1; i < MFC_PIDOF + 7; ++i)
+          printf ("\n#E:%d# [%d.. %d ..%d]", i, mpkt[i], _cpkt[i], Mpkt[i]);
+    }
     //
     _cpkt[MFC_PIPITCH] = get_cmap (_cpkt[MFC_PIPITCH], mpkt[MFC_PIPITCH], Mpkt[MFC_PIPITCH], -4000, 4000);
     _cpkt[MFC_PISURGE] = get_cmap (_cpkt[MFC_PISURGE], mpkt[MFC_PISURGE], Mpkt[MFC_PISURGE], -4000, 4000);

@@ -17,7 +17,7 @@ the next thing it does, it uses the USB HID data exchanged between the steering 
 # how this works
 
 the MFC SERVER controls the motion platform drivers.<br>
-the MFC CLIENTS are programs that receive native telemetry data and sends it to the server. clients developed so far:<br>
+the MFC CLIENTS are programs that receive native telemetry data and sends it to the server (see list of games above).<br>
 the USB XTRACTOR is used to proxy between the steering wheel and the console to extract USB HID data.<br>
 the MFC XTRACTOR uses the USB HID data to generate game telemetry.<br>
 the two extractors are only needed if the games you play don't provide in-game telemetry via UDP/TCP. the USBXTRACTOR also requires an Arduino/Teensy atmega32u4 with custom firmware. this solution is based on Matlo's https://github.com/matlo/serialusb<br>

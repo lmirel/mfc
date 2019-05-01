@@ -692,19 +692,28 @@ static int process_packet(int user, s_packet * packet)
       {
         ret = send_next_in_packet ();
         if (adapter_debug (0xff) & 0x0f)
+        {
           fprintf (stderr, "\n#i:next IN packet");
+          fflush (stderr);
+        }
       }
     }
     break;
   case E_TYPE_OUT:
     ret = send_out_packet (packet);
     if (adapter_debug (0xff) & 0x0f)
+    {
       fprintf (stderr, "\n#i:ready out pkt");
+      fflush (stderr);
+    }
     break;
   case E_TYPE_CONTROL:
     ret = send_control_packet (packet);
     if (adapter_debug (0xff) & 0x0f)
+    {
       fprintf (stderr, "\n#i:ready ctrl");
+      fflush (stderr);
+    }
     break;
   case E_TYPE_DEBUG:
     {
@@ -832,15 +841,19 @@ int proxy_start (char * port)
   }
 
   if (adapter_debug (0xff) & 0x0f)
+  {
     printf ("\n#i:started init timer");
+  }
   ret = gusb_register (usb, 0, usb_read_callback, usb_write_callback, usb_close_callback, gpoll_register_fd);
-  if (ret < 0) 
+  if (ret < 0)
   {
     return -1;
   }
 
   if (adapter_debug (0xff) & 0x0f)
+  {
     printf ("\n#i:started polling timer");
+  }
   int timer = gtimer_start (0, 10000, timer_read, timer_close, gpoll_register_fd);
   if (timer < 0) 
   {

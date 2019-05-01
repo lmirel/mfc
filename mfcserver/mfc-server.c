@@ -183,7 +183,9 @@ static void usage()
       "\t check your serial identifier with lsusb and you should see something similar to:\n"\
       "\t \t2341:8036 Arduino SA Leonardo (CDC ACM, HID) - Arduino Micro\n"\
       "\t \t2a03:0043 Dog Hunter AG Arduino Uno Rev3     - Arduino Uno\n"\
+      "\t \t1a86:7523 QinHeng Electronics HL-340 USB-Serial adapter\n"\
       "\t \t10c4:ea60 Silicon Laboratories, Inc. CP2102 USB to UART\n"\
+      "\t \t067b:2303 Prolific Technology, Inc. PL2303 Serial Port\n"\
       "\t \t067b:2303 Prolific Technology, Inc. USB-Serial Controller\n"\
       "\t \t0403:6001 Future Technology Devices International, Ltd FT232 USB-Serial (UART)\n");
   printf ("--scn output processing protocol specific to SCN5/6 controllers\n");
@@ -481,9 +483,12 @@ int dof1b = 0;
 //
 static int xdof_find ()
 {
-  int dev_i, ret, bp, pk = 0;
+  int dev_i, ret, pk = 0;
   libusb_device_handle *handle = NULL;
-	char description[256];
+  char description[256];
+  char dvendor[256];
+  char dproduct[256];
+  char dserial[256];
 	unsigned char string[256];
   //
   if (!ctx)
@@ -521,23 +526,47 @@ static int xdof_find ()
         ret = libusb_open (devs[dev_i], &handle);
         if (!ret)
         {
-          ret = libusb_get_string_descriptor_ascii (handle, desc.iManufacturer, string, sizeof(string));
-          if (!ret)
-            continue;
-          bp = snprintf (description, 255 - bp, "%s", string);
-          ret = libusb_get_string_descriptor_ascii (handle, desc.iProduct, string, sizeof(string));
-          if (!ret)
-            continue;
-          bp += snprintf (description + bp, 255 - bp, " %s", string);
-          ret = libusb_get_string_descriptor_ascii (handle, desc.iSerialNumber, string, sizeof(string));
-          if (!ret)
-            continue;
-          bp += snprintf (description + bp, 255 - bp, " %s", string);
+          //printf ("#d:desc.iManufacturer %d", desc.iManufacturer);
+          if (desc.iManufacturer)
+          {
+            ret = libusb_get_string_descriptor_ascii (handle, desc.iManufacturer, string, sizeof(string));
+            if (!ret)
+              continue;
+            snprintf (dvendor, 255, "%s", string);
+          }
+          else
+            snprintf (dvendor, 10, "%04x", odvid);
+          //printf ("#d:desc.iProduct %d", desc.iProduct);
+          if (desc.iProduct)
+          {
+            ret = libusb_get_string_descriptor_ascii (handle, desc.iProduct, string, sizeof(string));
+            if (!ret)
+              continue;
+            snprintf (dproduct, 255, "_%s", string);
+          }
+          else
+            snprintf (dproduct, 10, "_%04x", odpid);
+          //printf ("#d:desc.iSerialNumber %d", desc.iSerialNumber);
+          if (desc.iSerialNumber)
+          {
+            ret = libusb_get_string_descriptor_ascii (handle, desc.iSerialNumber, string, sizeof(string));
+            if (!ret)
+              continue;
+            snprintf (dserial, 255, "_%s", string);
+          }
+          else
+            *dserial = 0;
+          //
+          snprintf (description, 255, "%s%s%s", dvendor, dproduct, dserial);
+          printf ("\n#i:found device '%s','%s','%s' as '%s'", dvendor, dproduct, dserial, description);
           //
           char *ldp = description;
-          while (*ldp++ > 0)
+          while (*ldp > 0)
+          {
             if (*ldp == ' ')
               *ldp = '_';
+            ldp++;
+          }
           //
           //printf ("\n#i:%s", description);
           if (pk < DOF_MAX)
@@ -1066,12 +1095,13 @@ static int scnAdof_home_init ()
     printf ("\n#w:one of the DOFs didn't extend properly!");
   }
   //adjust work ranges by 3%
+#define SCN_DEADZONE  1 //% deadzone at the edges
   int wdz;
   for (i = 0; i < DOF_MAX; i++)
   {
     if (mfc_dof[i].ctlfd > 0)
     {
-      wdz = (mfc_dof[i].amax - mfc_dof[i].amin) * 3 / 100;
+      wdz = (mfc_dof[i].amax - mfc_dof[i].amin) * SCN_DEADZONE / 100;
       mfc_dof[i].cmin = wdz;
       mfc_dof[i].cmax = mfc_dof[i].amax - wdz;
       printf("\n#i:DOF#%d range %d..%d, usable %d..%d", i + 1,
@@ -1384,7 +1414,7 @@ static int inoAdof_set_pos (int *pdata)
   dof2r = get_cmap (dof2r, MFC_POS_MIN, MFC_POS_MAX, mfc_dof[dof_back].amin, mfc_dof[dof_back].amax);
   //smooth curve: shave some positions to avoid the motor to move constantly
   dof2r -= dof2r % INO_SMOOTHMOVE;
-  //avoid an issue with lack of move for this position
+  //
   inocmd[2] = *(((char *)&dof2l) + 1);
   inocmd[3] = *(((char *)&dof2l));
   inocmd[7] = *(((char *)&dof2r) + 1);
@@ -1392,8 +1422,8 @@ static int inoAdof_set_pos (int *pdata)
   //send command
   if (write (mfc_dof[dof_back].ctlfd, inocmd, icl) != icl)
   {
-    printf ("\n#E:DOF command '%s' failed for pos L%d, R%d", inocmd,
-        dof2l, dof2r);
+    printf ("\n#E:DOF command '%s' failed for pos L%d, R%d",
+        inocmd, dof2l, dof2r);
   }
   //
   if (_odbg)
@@ -1517,13 +1547,14 @@ int xdof_set_pos (int *pdata)
   switch (out_ifx)
   {
     case oi_kangaroo:
-      kngAdof_set_pos (pdata);
+      return kngAdof_set_pos (pdata);
       break;
     case oi_arduino:
-      inoAdof_set_pos (pdata);
+      return inoAdof_set_pos (pdata);
       break;
     case oi_scn:
       return scnAdof_set_pos (pdata);
+      break;
     default: //oi_dummy
       dmyAdof_set_pos (pdata);
   }
@@ -1892,6 +1923,7 @@ int main (int argc, char **argv)
         _motion = 1;
         xdof_start ();
         printf ("\n#i@04%lu:START motion", mtime);
+        fflush (stdout);
       }
       //update ffb time
       for (i = 0; i < poll_i; ++i)

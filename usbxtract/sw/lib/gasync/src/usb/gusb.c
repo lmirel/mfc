@@ -13,7 +13,7 @@
 
 #define USBASYNC_MAX_DEVICES 256
 
-#define USBASYNC_OUT_TIMEOUT 1000 // milliseconds
+#define USBASYNC_OUT_TIMEOUT 120 // milliseconds
 
 #define USBASYNC_DEFAULT_TIMEOUT 1000 // milliseconds
 

@@ -57,7 +57,7 @@ static int client_init ()
     cfile = open ("/tmp/usbx.cap", O_WRONLY | O_CREAT | O_TRUNC, 666);
   if ((s = socket (AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
   {
-    printf ("\n#ERR:socket");
+    printf ("\n#E:socket");
     return 0;
   }
   //destination
@@ -168,7 +168,7 @@ static int client_send (s_packet *packet)
   //
   if (bs < 0)
   {
-    printf ("\n#ERR:client_send");
+    printf ("\n#E:client_send");
     fflush (stdout);
   }
   return bs;
@@ -213,7 +213,10 @@ static inline int adapter_check(int adapter, const char * file, unsigned int lin
 static int adapter_recv(int adapter, const void * buf, int status) 
 {
   if (adapterDbg & 0x0f)
-    fprintf (stderr, "\n#d:adapter recv %d", status);
+  {
+    fprintf (stdout, "\n#d:adapter recv %d", status);
+    fflush (stdout);
+  }
   ADAPTER_CHECK(adapter, -1)
 
   if (status < 0) 
@@ -224,7 +227,10 @@ static int adapter_recv(int adapter, const void * buf, int status)
   int ret = 0;
 
   if (adapterDbg & 0x0f)
-    fprintf (stderr, "\n#d:adapter read %d", status);
+  {
+    fprintf (stdout, "\n#d:adapter read %d", status);
+    fflush (stdout);
+  }
   if(adapters[adapter].bread + status <= sizeof(s_packet)) 
   {
     memcpy((unsigned char *)&adapters[adapter].packet + adapters[adapter].bread, buf, status);
@@ -298,7 +304,10 @@ int adapter_send (int adapter, unsigned char type, const unsigned char * data, u
       return -1;
     }
     if (adapterDbg & 0x0f)
-      fprintf (stderr, "\n#d:adapter sent %dB", ret);
+    {
+      fprintf (stdout, "\n#d:adapter sent %dB", ret);
+      fflush (stdout);
+    }
     //send to network for processing
     client_send (&cpkt);
   } while (count > 0);
@@ -328,7 +337,10 @@ int adapter_open(const char * port, ADAPTER_READ_CALLBACK fp_read, ADAPTER_WRITE
         return -1;
       }
       if (adapterDbg & 0x0f)
-        fprintf (stderr, "\n#d:adapter opened %d", ret);
+      {
+        fprintf (stdout, "\n#d:adapter opened %d", ret);
+        fflush (stdout);
+      }
       return i;
     }
   }

@@ -24,16 +24,13 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <signal.h>
+#include <sched.h>
+#include <stdio.h>
 
 #include <libusb-1.0/libusb.h>
-#ifdef _USE_PIGPIO_
-//for demo platform control
-#include <pigpio.h>
-#endif
 //our own
 #include "scn_adapter.h"
 #include "extras.h"
-
 
 #define DEBUG 0
 #define debug_print(fmt, ...) \
@@ -50,15 +47,28 @@
 //zero pos packet: corresponds to platform leveling
 static int zeropkt[MFC_PKT_SIZE] = {0};
 
+static int inoAdof_init ();
+//static int inoAdof_home_init ();
 static int inoAdof_set_home ();
 static int inoAdof_set_pos (int *pdata);
 
-int xdof_home_init ();
+static int kngAdof_init ();
+//static int kngAdof_home_init ();
+static int kngAdof_set_home ();
+static int kngAdof_set_pos (int *pdata);
 
-#define MRANGE_MAX  10000
-
-#include <sched.h>
-#include <stdio.h>
+#define SCN_SPD_GEAR1   0x02EE
+#define SCN_SPD_GEAR2   0x04E2
+#define SCN_SPD_GEAR3   0x06D6
+#define SCN_SPD_GEAR4   0x08CA
+#define SCN_SPD_GEAR5   0x0ABE
+#define SCN_SPD_GEAR6   0x0CB2
+#define SCN_SPD_GEAR7   0x0EA6
+static int scn_speeds[] = {0x0000, 0x02EE, 0x04E2, 0x06D6, 0x08CA, 0x0ABE, 0x0CB2, 0x0EA6};
+static int scnAdof_init ();
+static int scnAdof_home_init ();
+static int scnAdof_set_home ();
+static int scnAdof_set_pos (int *pdata);
 
 int set_prio()
 {
@@ -85,22 +95,12 @@ void mfc_mot_start ();
  */
 int mfc_motfd = -1;
 int mfc_svrfd = -1;
-#ifdef _USE_PIGPIO_
-//gpio demo platform
-#define PGPIO_L   17  //rpi pin 11 - left servo
-#define PGPIO_R   27  //rpi pin 13 - right servo
-int mfc_gpiop = 1;
-int gpio_demo_on = 1;
-#endif
-//int mfc_whlfd = -1;
-//int mfc_joyfd = -1;
 /*
  *
  */
 char _odbg = 0;
 char _omot = 0;   //don't process motion, just debug it
 char _ostdin = 1;
-char _ofifo = 0;
 char _omotion = 1;
 char _oml = 2;
 int _omspeed = 5;
@@ -157,8 +157,6 @@ int stdin_process_message (char *buf)
       printf ("\n#m:motion: %s", _omotion?"on":"off");
       if (_omotion)
       {
-        xdof_home_init ();
-        //set speed
         mfc_mot_start ();
       }
       break;
@@ -185,6 +183,11 @@ static void usage()
       "\t \t2341:8036 Arduino SA Leonardo (CDC ACM, HID) - Arduino Micro\n"\
       "\t \t2a03:0043 Dog Hunter AG Arduino Uno Rev3     - Arduino Uno\n"\
       "\t \t0403:6001 Future Technology Devices International, Ltd FT232 USB-Serial (UART)");
+  printf ("--scn output processing protocol specific to SCN5/6 controllers\n");
+  printf ("--arduino output processing protocol specific to Arduino controllers\n"\
+      "\t it uses the command model 'XL<bin-left-pos>CXR<bin-right-pos>C\n");
+  printf ("--kangaroo output processing protocol specific to Kangaroo controllers\n"\
+      "\t it uses the command model 'L,P<left-pos>' and 'R,P<right-pos>'\n");
   printf ("\n");
 }
 
@@ -192,8 +195,9 @@ typedef enum {
   oi_dummy = 0,
   oi_scn,
   oi_arduino,
+  oi_kangaroo,
 } out_if;
-char *out_ifn[] = {"dummy/debug", "SCN5/6", "arduino", ""};
+char *out_ifn[] = {"dummy/debug", "SCN5/6", "Arduino", "Kangaroo", ""};
 static int out_ifx = oi_dummy;
 static int odpid = 0, odvid = 0;
 
@@ -214,6 +218,7 @@ int env_init (int argc, char *argv[])
     { "debug",   required_argument, 0, 'd' },
     { "arduino", no_argument,       0, 'a' },
     { "scn",     no_argument,       0, 'n' },
+    { "kangaroo",no_argument,       0, 'k' },
     //{ "dummy",   no_argument,       0, 'y' },
     { "output-device",  required_argument, 0, 'o' },
     { 0, 0, 0, 0 }
@@ -269,6 +274,16 @@ int env_init (int argc, char *argv[])
         printf ("invalid option: --output-device %s\n", optarg);
         usage ();
         return -1;
+      }
+      break;
+
+    case 'k': //use Kangaroo output interface
+      //ID 10c4:ea60 CP2102 USB to UART
+      out_ifx = oi_kangaroo;
+      if (odvid == 0 && odpid == 0)
+      {
+        odvid = 0x10C4;
+        odpid = 0xEA60;
       }
       break;
 
@@ -337,53 +352,6 @@ int env_init (int argc, char *argv[])
 //
 //--
 //
-#ifdef _USE_FIFOS_
-
-#define MFC_INPFIFO  "/tmp/mfcsinp"
-#define MFC_OUTFIFO  "/tmp/mfcsout"
-#define MFC_ERRFIFO  "/tmp/mfcserr"
-
-int mfc_pipe_new (char *name, int perm)
-{
-  unlink(name);
-  mkfifo(name, perm);
-
-  if (chmod(name, perm) < 0)
-  {
-    printf ("\nE:unable to set permissions to input fifo '%s' as %x", 
-      MFC_INPFIFO, perm);
-    //DBG(DBG_ALWAYS, "Can't set permissions (%d) for %s, %m", perm, name);
-    return 0;
-  }
-  return 1;
-}
-
-int mfc_fifoinp = -1;
-int mfc_fifoinp_new ()
-{
-  if (mfc_fifoinp < 0) //don't recreate it
-  {
-    mfc_pipe_new (MFC_INPFIFO, 0662);
-    if ((mfc_fifoinp = open (MFC_INPFIFO, O_RDONLY|O_NONBLOCK, S_IRUSR | S_IRGRP | S_IROTH)) == -1)
-    {
-      printf ("\n#E: unable to open input fifo '%s'", MFC_INPFIFO);
-      return 0;
-    }
-  }
-  return 1;
-}
-
-int mfc_fifoinp_del ()
-{
-  if (mfc_fifoinp > 0)
-  {
-    close (mfc_fifoinp);
-    unlink(MFC_INPFIFO);
-    mfc_fifoinp = -1;
-  }
-}
-#endif
-
 //
 /*
 * timestamping
@@ -475,13 +443,16 @@ static int dof_count = 0; //number of DOFs detected
 int xdof_init (char *lport, char *rport);
 int xdof_set_home ();
 //speed values
-#define P2DOF_SPD_GEAR1   0x02EE
-#define P2DOF_SPD_GEAR2   0x04E2
-#define P2DOF_SPD_GEAR3   0x06D6
-#define P2DOF_SPD_GEAR4   0x08CA
-#define P2DOF_SPD_GEAR5   0x0ABE
-#define P2DOF_SPD_GEAR6   0x0CB2
-#define P2DOF_SPD_GEAR7   0x0EA6
+typedef enum {
+  ds_gear1 = 1,
+  ds_gear2,
+  ds_gear3,
+  ds_gear4,
+  ds_gear5,
+  ds_gear6,
+  ds_gear7,
+} DOF_SPD;
+
 int xdof_set_speed (int spd);
 int xdof_set_pos (int *pdat);
 int xdof_set_poss (int *pdat);
@@ -495,9 +466,16 @@ static libusb_context* ctx = NULL;
 static libusb_device** devs = NULL;
 static ssize_t cnt = 0;
 static char dofports[DOF_MAX][255] = {"/dev/ttyUSB0", "/dev/ttyUSB1"};
-
-static int scnAdof_set_pos (int *pdata);
-
+//generic data
+//2DOF motion positions
+int dof2l = 0;
+int dof2r = 0;
+int dof2pp = 0; //platform pitch
+int dof2pr = 0; //platform roll
+int dof1b = 0;
+#define SMOOTHMOVE  50
+#define INO_SMOOTHMOVE  5
+//
 static int xdof_find ()
 {
   int dev_i, ret, bp, pk = 0;
@@ -597,13 +575,179 @@ static int xdof_find ()
   return pk;
 }
 
-static int scnAdof_home_init ();
+//command has '\r\n' included
+static int kng_command_send (int fd, char *cmd)
+{
+  return write (fd, cmd, strlen (cmd));
+}
+//slow read: use only during init
+
+//response doesn't include '\r\n'
+static int kng_command_read (int fd, char *cmd, char *ret)
+{
+  if (kng_command_send (fd, cmd) < 0)
+    return -1;
+  int rb = 0;
+  *ret = 0;
+  //read until data is available
+  while (read (fd, ret + rb, 1) < 1);
+  while (*(ret + rb) > 0)
+  {
+    if (*(ret+rb) == '\r' || *(ret+rb) == '\n')
+    {
+      *(ret + rb) = 0;
+      return rb;
+    }
+    rb++;
+    read (fd, ret + rb, 1);
+  }
+  return 0;
+}
+
+#define KNG_CMD_LEN 110
+static char kngcmd[KNG_CMD_LEN];
+static int  kcl = 0;
+#define KNG_SMOOTHMOVE  5
+static int kngAdof_set_pos (int *pdata)
+{
+  //do some common computing here, to be reused
+  dof2l = dof2pp + dof2pr;
+  dof2r = dof2pp - dof2pr;
+  if (_odbg)
+    printf ("\n#i:in pos L%d, R%d", dof2l, dof2r);
+  //left
+  dof2l = get_cmap (dof2l, MFC_POS_MIN, MFC_POS_MAX, mfc_dof[dof_left].amin, mfc_dof[dof_left].amax);
+  //smooth curve: shave some positions to avoid the motor to move constantly
+  dof2l -= dof2l % KNG_SMOOTHMOVE;
+  //avoid an issue with lack of move for this position
+  //right
+  dof2r = get_cmap (dof2r, MFC_POS_MIN, MFC_POS_MAX, mfc_dof[dof_right].amin, mfc_dof[dof_right].amax);
+  //smooth curve: shave some positions to avoid the motor to move constantly
+  dof2r -= dof2r % KNG_SMOOTHMOVE;
+  //no speed processing for now
+  //kcl = snprintf (kngcmd, KNG_CMD_LEN, "R,P%d S%d\nL,P%d S%d\n");
+  kcl = snprintf (kngcmd, KNG_CMD_LEN, "R,P%d\r\nL,P%d\r\n", dof2r, dof2l);
+  //send command
+  if (kng_command_send (mfc_dof[dof_left].ctlfd, kngcmd) != kcl)
+  {
+    printf ("\n#E:DOF command '%s' failed for pos L%d, R%d",
+        kngcmd, dof2l, dof2r);
+  }
+  //
+  if (_odbg)
+  {
+    printf ("\n#i:DOF command '%s' pos L%d, R%d", kngcmd, dof2l, dof2r);
+  }
+  //
+  return 1;
+}
+
+static int kngAdof_set_home ()
+{
+  //flush the speed response
+  kngAdof_set_pos (zeropkt);
+  //
+  return 1;
+}
+
+static int kngAdof_init ()
+{
+  int scnpk = xdof_find ();
+  if (scnpk == 0)
+  {
+    printf ("\n#E:found %d DOF adapters", scnpk);
+    _done = 1;
+    return -1;
+  }
+  //
+  if (scnpk <= DOF_MAX)
+    dof_count = scnpk;
+  else
+  {
+    printf ("\n#E:found %d DOF adapters - we'll handle only the first 6", scnpk);
+    dof_count = DOF_MAX;
+  }
+  //set-up DOF control port
+  int i;
+  for (i = 0; i < DOF_MAX; i++)
+  {
+    mfc_dof[i].ctlport = NULL;
+    mfc_dof[i].ctlfd = -1;
+    mfc_dof[i].pos = 0;
+  }
+  //Kangaroo uses one FD for all axis
+  mfc_dof[dof_left].ctlport = dofports[0];
+  mfc_dof[dof_right].ctlport = dofports[0];
+  //set-up FDs
+  struct termios options;
+  i = dof_left;
+  if (mfc_dof[i].ctlport)
+  {
+    //open
+    mfc_dof[i].ctlfd = open (mfc_dof[i].ctlport, O_RDWR | O_NOCTTY | O_NONBLOCK);
+    if (mfc_dof[i].ctlfd == -1)
+    {
+      printf ("\n#E:DOF adapter not found on %s", mfc_dof[i].ctlport);
+      return -1;
+    }
+    //set options
+    tcgetattr (mfc_dof[i].ctlfd, &options);
+    //
+    cfsetispeed (&options, B9600);
+    cfsetospeed (&options, B9600);
+    cfmakeraw (&options);
+    //
+    if (tcsetattr (mfc_dof[i].ctlfd, TCSANOW, &options) < 0)
+    {
+      printf ("\n#E:cannot set options for DOF adapter %s", mfc_dof[i].ctlport);
+      return -1;
+    }
+    printf("\n#i:connected to DOF#%d '%s', on %d", 1, mfc_dof[i].ctlport, mfc_dof[i].ctlfd);
+  }
+  //copy the same FD to right dof
+  mfc_dof[dof_right].ctlfd = mfc_dof[dof_left].ctlfd;
+  //read the mins and maxs for both axis
+  if (kng_command_send (mfc_dof[dof_left].ctlfd, "L,START\r\n") < 9
+      || kng_command_send (mfc_dof[dof_right].ctlfd, "R,START\r\n") < 9)
+  {
+    //bail out
+    return -1;
+  }
+  char res[50];
+  //read left
+  if (kng_command_read (mfc_dof[dof_left].ctlfd, "L,GETMIN\r\n", res) < 5)
+  {
+    //bail out
+    return -1;
+  }
+  mfc_dof[dof_left].amin = atoi (res + 3);
+  if (kng_command_read (mfc_dof[dof_left].ctlfd, "L,GETMAX\r\n", res) < 5)
+  {
+    //bail out
+    return -1;
+  }
+  mfc_dof[dof_left].amax = atoi (res + 3);
+  //read right
+  if (kng_command_read (mfc_dof[dof_right].ctlfd, "R,GETMIN\r\n", res) < 5)
+  {
+    //bail out
+    return -1;
+  }
+  mfc_dof[dof_right].amin = atoi (res + 3);
+  if (kng_command_read (mfc_dof[dof_right].ctlfd, "R,GETMAX\r\n", res) < 5)
+  {
+    //bail out
+    return -1;
+  }
+  mfc_dof[dof_right].amax = atoi (res + 3);
+  //
+  kngAdof_set_home ();
+  //
+  return 1;
+}
 
 static int inoAdof_init ()
 {
-  //char lscnp[] = "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A504KGF1-if00-port0";
-  //char rscnp[] = "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A504KGHA-if00-port0";
-  //
   int scnpk = xdof_find ();
   if (scnpk == 0)
   {
@@ -654,12 +798,6 @@ static int inoAdof_init ()
       return -1;
     }
     printf("\n#i:connected to DOF#%d '%s', on %d", 1, mfc_dof[i].ctlport, mfc_dof[i].ctlfd);
-    //check adapter
-    if (scn_get_status (mfc_dof[i].ctlfd) == 0)
-    {
-      printf ("\n#E:motion platform not responding, bailing out");
-      return -1;
-    }
   }
   //
   //home the platform
@@ -673,9 +811,6 @@ static int inoAdof_init ()
 
 static int scnAdof_init ()
 {
-  //char lscnp[] = "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A504KGF1-if00-port0";
-  //char rscnp[] = "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A504KGHA-if00-port0";
-  //
   int scnpk = xdof_find ();
   if (scnpk <= 0)
   {
@@ -783,6 +918,9 @@ int xdof_init (char *lport, char *rport)
 {
   switch (out_ifx)
   {
+    case oi_kangaroo:
+      kngAdof_init ();
+      break;
     case oi_arduino:
       inoAdof_init ();
       break;
@@ -794,7 +932,6 @@ int xdof_init (char *lport, char *rport)
   return 1;
 }
 
-static int scnAdof_set_home ();
 static int scnAdof_home_init ()
 {
   //send on
@@ -810,7 +947,7 @@ static int scnAdof_home_init ()
       //turn DOF on
       scn_set_son (mfc_dof[i].ctlfd);
       //set speed to min
-      scn_set_vel (mfc_dof[i].ctlfd, P2DOF_SPD_GEAR1, DEFA_ACMD);
+      scn_set_vel (mfc_dof[i].ctlfd, scn_speeds[ds_gear1], DEFA_ACMD);
       scn_get_response (mfc_dof[i].ctlfd, rsp);
       //send home
       scn_set_home (mfc_dof[i].ctlfd);
@@ -906,20 +1043,6 @@ static int scnAdof_home_init ()
   printf (" homing done");
   fflush (stdout);
   //
-  return 1;
-}
-
-int xdof_home_init ()
-{
-  switch (out_ifx)
-  {
-    case oi_arduino:
-      break;
-    case oi_scn:
-      return scnAdof_home_init ();
-    default: //oi_dummy
-      ;
-  }
   return 1;
 }
 
@@ -1029,7 +1152,7 @@ static int scnAdof_set_home ()
         return -1;
       }
       //set speed to min
-      scn_set_vel (mfc_dof[i].ctlfd, P2DOF_SPD_GEAR1, DEFA_ACMD);
+      scn_set_vel (mfc_dof[i].ctlfd, scn_speeds[ds_gear1], DEFA_ACMD);
       scn_get_response (mfc_dof[i].ctlfd, rsp);
     }
   }
@@ -1085,31 +1208,6 @@ int xdof_set_home ()
   return 1;
 }
 
-#ifdef _USE_PIGPIO_
-void gpio_demo_stop ()
-{
-  //stop the demo platform as well
-  if (mfc_gpiop && gpio_demo_on)
-  {
-    gpioServo (PGPIO_L, 0);
-    gpioServo (PGPIO_R, 0);
-  }
-}
-
-void gpio_demo_spos (int lp, int rp)
-{
-  if (mfc_gpiop && gpio_demo_on)
-  {
-    //left
-    int pp = get_map (lp, -10000, 0, 2000, 1000);
-    gpioServo (PGPIO_L, pp);
-    //right
-    pp = get_map (rp, -10000, 0, 1000, 2000);
-    gpioServo (PGPIO_R, pp);
-  }
-}
-#endif// _USE_PIGPIO_
-
 /*
 spd: speeds 
 doc: speed order default value set range is 0000H..57E4H with unit of 0.2r/min
@@ -1133,7 +1231,7 @@ static int scnAdof_set_speed (int spd)
   {
     if (mfc_dof[i].ctlport)
     {
-      scn_set_vel (mfc_dof[i].ctlfd, spd, DEFA_ACMD);
+      scn_set_vel (mfc_dof[i].ctlfd, scn_speeds[spd], DEFA_ACMD);
       scn_get_response (mfc_dof[i].ctlfd, rsp);
     }
   }
@@ -1145,8 +1243,8 @@ int xdof_set_speed (int spd)
   if (_odbg)
     printf ("\n#i:motion %d speed 0x%04X", spd, spd);
   //
-  if (spd < P2DOF_SPD_GEAR1 || spd > P2DOF_SPD_GEAR7)
-    spd = P2DOF_SPD_GEAR1;
+  if (spd < ds_gear1 || spd > ds_gear7)
+    spd = ds_gear1;
   
   //
   switch (out_ifx)
@@ -1197,14 +1295,6 @@ int xdof_set_poss (int *pdata)
   return 0;
 }
 
-//2DOF motion positions
-int dof2l = 0;
-int dof2r = 0;
-int dof2pp = 0; //platform pitch
-int dof2pr = 0; //platform roll
-int dof1b = 0;
-#define SMOOTHMOVE  50
-#define INO_SMOOTHMOVE  5
 static int scndof_move (int idx)
 {
   if (mfc_dof[idx].ctlfd > 0)
@@ -1258,10 +1348,6 @@ static int inoAdof_set_pos (int *pdata)
         inocmd[2] * 256 + inocmd[3], inocmd[7] * 256 + inocmd[8],
         inocmd[2], inocmd[3], inocmd[7], inocmd[8], dof2l, dof2r);
   }
-#ifdef _USE_PIGPIO_
-    if (0)
-      gpio_demo_spos (dof2l, dof2r);
-#endif
   //
   return 1;
 }
@@ -1363,10 +1449,6 @@ static int scnAdof_set_pos (int *pdata)
     printf ("\n#i@%04d:cmap pos L%d, R%d, B %d", dtime_ms(), dof2l, dof2r, dof1b);
     dmyAdof_set_pos (pdata);
   }
-#ifdef _USE_PIGPIO_
-    if (0)
-      gpio_demo_spos (dof2l, dof2r);
-#endif
   //
   return 1;
 }
@@ -1533,25 +1615,25 @@ void mfc_mot_start ()
     switch (_omspeed)
     {
       case 2:
-        xdof_set_speed (P2DOF_SPD_GEAR2); //slower
+        xdof_set_speed (ds_gear2); //slower
         break;
       case 3:
-        xdof_set_speed (P2DOF_SPD_GEAR3); //slow
+        xdof_set_speed (ds_gear3); //slow
         break;
       case 4:
-        xdof_set_speed (P2DOF_SPD_GEAR4); //normal
+        xdof_set_speed (ds_gear4); //normal
         break;
       case 5:
-        xdof_set_speed (P2DOF_SPD_GEAR5); //faster
+        xdof_set_speed (ds_gear5); //faster
         break;
       case 6:
-        xdof_set_speed (P2DOF_SPD_GEAR6); //even faster
+        xdof_set_speed (ds_gear6); //even faster
         break;
       case 7:
-        xdof_set_speed (P2DOF_SPD_GEAR7); //fastest
+        xdof_set_speed (ds_gear7); //fastest
         break;
       default:
-        xdof_set_speed (P2DOF_SPD_GEAR1); //slowest
+        xdof_set_speed (ds_gear1); //slowest
         break;
     }
     //kangAllStart ();
@@ -1620,25 +1702,7 @@ int main (int argc, char **argv)
   (void) signal(SIGTERM, terminate);
   (void) signal(SIGHUP, terminate);
   //
-  /**
-   *  allow dead zone of X% relative to wheel center
-   */
-  //js_pos_dz = (32767 * _odz) / 200;
-  //printf ("\n#DZ wpos %d", js_pos_dz);
-  /**
-   * reduce motion range to X% max
-   */
-  //js_pos_max = (MRANGE_MAX * _oml) / 200;
-  //printf ("\n#ML wpos %d\n", js_pos_max);
-#ifdef _USE_PIGPIO_
-  if (gpioInitialise() < 0)
-    mfc_gpiop = 0;
-  else
-    gpioSetSignalFunc (SIGINT, terminate);
-#endif
-  //
   //add command control pipe
-  //mfc_fifoinp_new ();
   int rkntr = 1, rkffb = 0, rkdat = 0, rkdrop = 0;
   int i, mms = 0, cms;
   int _motion = 1;
@@ -1686,18 +1750,6 @@ int main (int argc, char **argv)
       fds[poll_i].events = POLLIN;
       poll_i++;
     }
-#ifdef _USE_FIFOS_
-    //in fifo
-    if (_ofifo)
-    {
-      if (mfc_fifoinp > 0)
-      {
-        fds[poll_i].fd = mfc_fifoinp;
-        fds[poll_i].events = POLLIN | POLLHUP;
-        poll_i++;
-      }
-    }
-#endif
     //poll all events
     if (poll_i > 0)
     {
@@ -1735,9 +1787,6 @@ int main (int argc, char **argv)
         printf ("\n#i@04%lu:STOP motion", mtime);
         fflush (stdout);
         //
-#ifdef _USE_PIGPIO_
-        gpio_demo_stop ();
-#endif
       }
     }
     else if (pr < 0)
@@ -1777,30 +1826,6 @@ int main (int argc, char **argv)
         if(fds[i].revents & POLLIN || fds[i].revents & POLLPRI || fds[i].revents & POLLHUP )
         {
           if (fds[i].revents & POLLPRI) printf ("\n#i:%d polled PRI", fds[i].fd);
-#ifdef _USE_FIFOS_
-          //command fifo
-          if (fds[i].fd == mfc_fifoinp)
-          {
-            //did we get a disconnect?
-            if (fds[i].revents & POLLHUP)
-            {
-              mfc_fifoinp_del ();
-              mfc_fifoinp_new ();
-              break;
-            }
-            //
-            if (read (mfc_fifoinp, buf, 50) > 0)
-            {
-              char *pb = buf;
-              buf[49] = '\0';
-              while (*pb != '\r' && *pb != '\n' && *pb != '\0')
-                pb++;
-              *pb = '\0';
-              printf("\n#i:IN FIFO read 0x%2.2X '%s'", (((unsigned int) buf[0]) & 0xFF), buf);
-            }
-            break;
-          }//cmd fifo
-#endif
           //MOTion
           /*
           */
@@ -1932,20 +1957,8 @@ int main (int argc, char **argv)
   printf ("\n#i:for %lusec, processes %d/%d pkts(evt/drop)", rtime / 1000, rkntr, rkdrop);
   printf ("\n#i:handled %dpkts, cleaning up..", rkntr + rkffb + rkdat + rkdrop);
   //
-#ifdef _USE_FIFOS_
-  mfc_fifoinp_del ();
-#endif
   mfc_svr_del ();
   mfc_mot_del ();
-  //pigpio demo platform
-#ifdef _USE_PIGPIO_
-  if (mfc_gpiop)
-  {
-    gpioServo (PGPIO_L, 0);
-    gpioServo (PGPIO_R, 0);
-    gpioTerminate ();
-  }
-#endif
   //
   printf ("\n#i:done!\n");
   return 0;

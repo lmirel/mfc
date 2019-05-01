@@ -56,6 +56,7 @@ static int kngAdof_init ();
 //static int kngAdof_home_init ();
 static int kngAdof_set_home ();
 static int kngAdof_set_pos (int *pdata);
+static int kngAdof_onoff (int on);
 
 #define SCN_SPD_GEAR1   0x02EE
 #define SCN_SPD_GEAR2   0x04E2
@@ -177,17 +178,19 @@ int stdin_process_message (char *buf)
 
 static void usage()
 {
-  printf ("#usage: sudo mfc-server\n\n");
+  printf ("usage: sudo mfc-server\n\n");
   printf ("--output-device, -o 'vid:pid' of serial device identifier controlling the platform\n"\
       "\t check your serial identifier with lsusb and you should see something similar to:\n"\
       "\t \t2341:8036 Arduino SA Leonardo (CDC ACM, HID) - Arduino Micro\n"\
       "\t \t2a03:0043 Dog Hunter AG Arduino Uno Rev3     - Arduino Uno\n"\
-      "\t \t0403:6001 Future Technology Devices International, Ltd FT232 USB-Serial (UART)");
+      "\t \t10c4:ea60 Silicon Laboratories, Inc. CP2102 USB to UART\n"\
+      "\t \t067b:2303 Prolific Technology, Inc. USB-Serial Controller\n"\
+      "\t \t0403:6001 Future Technology Devices International, Ltd FT232 USB-Serial (UART)\n");
   printf ("--scn output processing protocol specific to SCN5/6 controllers\n");
   printf ("--arduino output processing protocol specific to Arduino controllers\n"\
       "\t it uses the command model 'XL<bin-left-pos>CXR<bin-right-pos>C\n");
   printf ("--kangaroo output processing protocol specific to Kangaroo controllers\n"\
-      "\t it uses the command model 'L,P<left-pos>' and 'R,P<right-pos>'\n");
+      "\t it uses the command model 'L,P<left-pos> S<left-speed>' and 'R,P<right-pos> S<right-speed>'\n");
   printf ("\n");
 }
 
@@ -229,7 +232,7 @@ int env_init (int argc, char *argv[])
     /* getopt_long stores the option index here. */
     int option_index = 0;
 
-    c = getopt_long (argc, argv, "o:s:d:l:hmVan", long_options, &option_index);
+    c = getopt_long (argc, argv, "o:s:d:l:hmVank", long_options, &option_index);
 
     /* Detect the end of the options. */
     if (c == -1)
@@ -960,10 +963,10 @@ int xdof_init (char *lport, char *rport)
   switch (out_ifx)
   {
     case oi_kangaroo:
-      kngAdof_init ();
+      return kngAdof_init ();
       break;
     case oi_arduino:
-      inoAdof_init ();
+      return inoAdof_init ();
       break;
     case oi_scn:
       return scnAdof_init ();
@@ -1106,6 +1109,8 @@ int xdof_fill_fds(struct pollfd fds[])
 {
   switch (out_ifx)
   {
+    case oi_kangaroo:
+      break;
     case oi_arduino:
       break;
     case oi_scn:
@@ -1118,11 +1123,12 @@ int xdof_fill_fds(struct pollfd fds[])
 
 static int kngAdof_release ()
 {
-  int i = dof_back;
-  if (mfc_dof[i].ctlfd > 0)
+  kngAdof_onoff (0);
+  //dof right is the same as left
+  if (mfc_dof[dof_left].ctlfd > 0)
   {
     //close
-    close (mfc_dof[i].ctlfd);
+    close (mfc_dof[dof_left].ctlfd);
   }
   //
   return 0;
@@ -1524,7 +1530,7 @@ int xdof_set_pos (int *pdata)
   return 1;
 }
 
-int scnAdof_onoff (int on)
+static int scnAdof_onoff (int on)
 {
   int i;
   if (on)
@@ -1546,7 +1552,7 @@ int scnAdof_onoff (int on)
   return 1;
 }
 
-int kngAdof_onoff (int on)
+static int kngAdof_onoff (int on)
 {
   if (on)
   {

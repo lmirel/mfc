@@ -608,6 +608,8 @@ static int kng_command_read (int fd, char *cmd, char *ret)
 static char kngcmd[KNG_CMD_LEN];
 static int  kcl = 0;
 #define KNG_SMOOTHMOVE  5
+static int lkngspd = 0;   //kangaroo speed for left side
+static int rkngspd = 0;   //kangaroo speed for right side
 static int kngAdof_set_pos (int *pdata)
 {
   //do some common computing here, to be reused
@@ -625,8 +627,10 @@ static int kngAdof_set_pos (int *pdata)
   //smooth curve: shave some positions to avoid the motor to move constantly
   dof2r -= dof2r % KNG_SMOOTHMOVE;
   //no speed processing for now
-  //kcl = snprintf (kngcmd, KNG_CMD_LEN, "R,P%d S%d\nL,P%d S%d\n");
-  kcl = snprintf (kngcmd, KNG_CMD_LEN, "R,P%d\r\nL,P%d\r\n", dof2r, dof2l);
+  if (lkngspd > 0 && rkngspd > 0)
+    kcl = snprintf (kngcmd, KNG_CMD_LEN, "R,P%d S%d\nL,P%d S%d\n", dof2r, rkngspd, dof2l, lkngspd);
+  else
+    kcl = snprintf (kngcmd, KNG_CMD_LEN, "R,P%d\r\nL,P%d\r\n", dof2r, dof2l);
   //send command
   if (kng_command_send (mfc_dof[dof_left].ctlfd, kngcmd) != kcl)
   {
@@ -640,6 +644,43 @@ static int kngAdof_set_pos (int *pdata)
   }
   //
   return 1;
+}
+
+static int kngAdof_set_speed (int spd)
+{
+  int lr = mfc_dof[dof_left].amax - mfc_dof[dof_left].amin;
+  int rr = mfc_dof[dof_right].amax - mfc_dof[dof_right].amin;
+  switch (spd)
+  {
+    case 2: //slower
+      lkngspd = lr / 6;
+      rkngspd = rr / 6;
+      break;
+    case 3:
+      lkngspd = lr / 5;
+      rkngspd = rr / 5;
+      break;
+    case 4:
+      lkngspd = lr / 4;
+      rkngspd = rr / 4;
+      break;
+    case 5:
+      lkngspd = lr / 3;
+      rkngspd = rr / 3;
+      break;
+    case 6:
+      lkngspd = lr / 2;
+      rkngspd = rr / 2;
+      break;
+    case 7:
+      lkngspd = lr;
+      rkngspd = rr;
+      break;
+    default:
+      lkngspd = lr / 8;
+      rkngspd = rr / 8;
+  }
+  return 0;
 }
 
 static int kngAdof_set_home ()
@@ -1075,6 +1116,18 @@ int xdof_fill_fds(struct pollfd fds[])
   return 0;
 }
 
+static int kngAdof_release ()
+{
+  int i = dof_back;
+  if (mfc_dof[i].ctlfd > 0)
+  {
+    //close
+    close (mfc_dof[i].ctlfd);
+  }
+  //
+  return 0;
+}
+
 static int inoAdof_release ()
 {
   int i = dof_back;
@@ -1108,6 +1161,9 @@ int xdof_release ()
 {
   switch (out_ifx)
   {
+    case oi_kangaroo:
+      kngAdof_release ();
+      break;
     case oi_arduino:
       inoAdof_release ();
       break;
@@ -1118,17 +1174,6 @@ int xdof_release ()
   }
   return 1;
 }
-#if 0
-static int p2scn_fill_fds (struct pollfd fds[], int idx)
-{
-  fds[idx].fd = mfc2dof.lfd;
-  fds[idx].events = POLLIN | POLLHUP;
-  fds[idx + 1].fd = mfc2dof.rfd;
-  fds[idx + 1].events = POLLIN | POLLHUP;
-  //
-  return 2;
-}
-#endif
 
 static int inoAdof_set_home ()
 {
@@ -1249,6 +1294,9 @@ int xdof_set_speed (int spd)
   //
   switch (out_ifx)
   {
+    case oi_kangaroo:
+      kngAdof_set_speed (spd);
+      break;
     case oi_arduino:
       break;
     case oi_scn:
@@ -1439,6 +1487,7 @@ static int scnAdof_set_pos (int *pdata)
     scndof_move (dof_back);
     //alt back
     scndof_move (dof_aback);
+    //
     if (_odbg)
       printf ("\n#i@%04d:DOF pos L%d, R%d, B %d", dtime_ms(),
           mfc_dof[dof_left].pos, mfc_dof[dof_right].pos, mfc_dof[dof_back].pos);
@@ -1461,6 +1510,9 @@ int xdof_set_pos (int *pdata)
   //
   switch (out_ifx)
   {
+    case oi_kangaroo:
+      kngAdof_set_pos (pdata);
+      break;
     case oi_arduino:
       inoAdof_set_pos (pdata);
       break;
@@ -1494,10 +1546,34 @@ int scnAdof_onoff (int on)
   return 1;
 }
 
+int kngAdof_onoff (int on)
+{
+  if (on)
+  {
+    //on
+    if (mfc_dof[dof_left].ctlfd > 0)
+      kng_command_send (mfc_dof[dof_left].ctlfd, "L,START");
+    if (mfc_dof[dof_right].ctlfd > 0)
+      kng_command_send (mfc_dof[dof_right].ctlfd, "R,START");
+  }
+  else
+  {
+    //off
+    if (mfc_dof[dof_left].ctlfd > 0)
+      kng_command_send (mfc_dof[dof_left].ctlfd, "L,POWERDOWN");
+    if (mfc_dof[dof_right].ctlfd > 0)
+      kng_command_send (mfc_dof[dof_right].ctlfd, "R,POWERDOWN");
+  }
+  return 1;
+}
+
 int xdof_start ()
 {
   switch (out_ifx)
   {
+    case oi_kangaroo:
+      return kngAdof_onoff (1);
+      break;
     case oi_arduino:
       break;
     case oi_scn:
@@ -1512,6 +1588,9 @@ int xdof_stop ()
 {
   switch (out_ifx)
   {
+    case oi_kangaroo:
+      return kngAdof_onoff (0);
+      break;
     case oi_arduino:
       break;
     case oi_scn:

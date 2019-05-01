@@ -24,7 +24,7 @@ gcc -o /opt/mfcc-pcars2 clients/pcars/pcars-dash.c -lrt -std=c11
             do { if (DEBUG) fprintf(stderr, fmt, __VA_ARGS__); } while (0)
 
 int inet_aton(const char *cp, struct in_addr *inp);
-//int usleep(long usec);
+int usleep(long usec);
 
 int ctime_ms(char pt)
 {
@@ -536,8 +536,9 @@ End With
     _cpkt[MFC_PIDOF]  = PKTT_2DOFN;
     //motion
     #if 1
-    #define ORIENTATION_IDX 100
-    #define LOCAL_ACCEL_IDX 100
+#define ORIENTATION_IDX 52
+#define LOCAL_ACCEL_IDX 100
+#define LOCAL_VELOC_IDX 64
     //
     fv[MFC_PIPITCH] = get_float (packetBuffer, ORIENTATION_IDX + 8);
     _cpkt[MFC_PIPITCH]  = (int)(fv[MFC_PIPITCH] * 100.0f);
@@ -555,7 +556,7 @@ End With
     _cpkt[MFC_PIROLL]  = (int)(fv[MFC_PIROLL] * 100.0f);
     //_cpkt[MFC_PIROLL]  = get_cmap (pf_roll, -128, 128, -7000, 7000);
     //
-    fv[MFC_PISWAY] = get_float (packetBuffer, LOCAL_ACCEL_IDX);
+    fv[MFC_PISWAY] = get_float (packetBuffer, LOCAL_VELOC_IDX);
     _cpkt[MFC_PISWAY]  = (int)(fv[MFC_PISWAY] * 100.0f);
     //_cpkt[MFC_PISWAY]  = get_cmap (get_float (packetBuffer, local_accel_idx)*100, 8200, 8200, -3000, 3000);
     //
@@ -576,7 +577,7 @@ End With
       printf ("\n#i:pitch%% \t%d \t%d \t%d \troll%% \t%d \t%d \t%d", 
         _cpkt[MFC_PIPITCH], _cpkt[MFC_PISURGE], _cpkt[MFC_PIHEAVE], _cpkt[MFC_PIROLL], _cpkt[MFC_PISWAY], _cpkt[MFC_PIYAW]);
     //
-    if (0)
+    if (0)//disable automax
     {
       int _newrange = 0;
       for (int i = MFC_PIDOF + 1; i < MFC_PIDOF + 7; ++i)
@@ -613,7 +614,7 @@ End With
         for (int i = MFC_PIDOF + 1; i < MFC_PIDOF + 7; ++i)
           printf ("\n#E:%d# [%d.. %d ..%d]", i, mpkt[i], _cpkt[i], Mpkt[i]);
     }
-    //
+    //adjust here for a total max of 10000/-10000 for pitch and roll
     _cpkt[MFC_PIPITCH] = get_cmap (_cpkt[MFC_PIPITCH], mpkt[MFC_PIPITCH], Mpkt[MFC_PIPITCH], -4000, 4000);
     _cpkt[MFC_PISURGE] = get_cmap (_cpkt[MFC_PISURGE], mpkt[MFC_PISURGE], Mpkt[MFC_PISURGE], -4000, 4000);
     _cpkt[MFC_PIHEAVE] = get_cmap (_cpkt[MFC_PIHEAVE], mpkt[MFC_PIHEAVE], Mpkt[MFC_PIHEAVE], -2000, 2000);

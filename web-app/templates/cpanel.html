@@ -1,104 +1,46 @@
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
-<html>
-    <head>
-        <title>MFC - control panel</title>
-       <link rel="stylesheet" media="screen" href ="static/css/bootstrap.min.css">
-       <link rel="stylesheet" href="static/css/bootstrap-theme.min.css">
-       <meta name="viewport" content = "width=device-width, initial-scale=1.0">
-    </head>
-    <body>
-
-<div class="container"> 
-  <h2>MFC - control panel</h2>
-  {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for message in messages %}
-            <hr />
-            {% if "Error" in message[1]: %}
-              <div class="alert alert-danger">
-            {% elif "Danger" in message[1]: %}
-              <div class="alert alert-warning">
-            {% else %}
-              <div class="alert alert-info">
-            {% endif %}
+{% extends "base.html" %}
+{#{% block title %}control panel{% endblock %}#}
+{% block content %}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for message in messages %}
+                <hr/>
+                {% if "Error" in message[1] %}
+                    <div class="alert alert-danger">
+                {% elif "Danger" in message[1] %}
+                    <div class="alert alert-warning">
+                {% else %}
+                    <div class="alert alert-info">
+                {% endif %}
             {{ message[1] }}
             </div>
-        {% endfor %}
-      {% endif %}
-  {% endwith %}
-  <form  action="" method="post" role="form">
-    {{ form.csrf }}
-    <div class="form-group">
-      <!-- MFC server control -->
-      <hr />
-      {% if mfcsvr %}
-      <div class="alert alert-success" role="alert">
-      {{ form.mfcsvrof(class="btn btn-warning") }}
-      <label for="name">MFC server: running [view <a href=/logs/mfc-svr.log>log</a>]</label>
-      {% else %}
-      <div class="alert alert-warning" role="alert">
-      {{ form.mfcsvron(class="btn btn-success") }}
-      <label for="name">MFC server: NOT running [view <a href=/logs/mfc-svr.log>log</a>]</label>
-      {% endif %}
-      </div>
-      <!-- MFC client control -->
-      {% if mfccli %}
-      <div class="alert alert-success" role="alert">
-      {{ form.mfccliof(class="btn btn-warning") }}
-      <label for="name">MFC client: running [view <a href=/logs/mfc-cli.log>log</a>]</label>
-      {% else %}
-      <div class="alert alert-warning" role="alert">
-      {{ form.mfcclion(class="btn btn-success") }}
-      <label for="name">MFC client: NOT running [view <a href=/logs/mfc-cli.log>log</a>]</label>
-      {% endif %}
-      </div>
-      <!-- MFC PCARS native client control -->
-      <hr />
-      {% if mfcnpcars %}
-      <div class="alert alert-success" role="alert">
-      {{ form.mfcnpcarsof(class="btn btn-warning") }}
-      <label for="name">PCARS native client: running</label>
-      {% else %}
-      <div class="alert alert-warning" role="alert">
-      {{ form.mfcnpcarson(class="btn btn-success") }}
-      <label for="name">PCARS native client: NOT running</label>
-      {% endif %}
-      </div>
-      <!-- MFC AC native client control -->
-      {% if mfcnac %}
-      <div class="alert alert-success" role="alert">
-      {{ form.mfcnacof(class="btn btn-warning") }}
-      <label for="name">Assetto Corsa native client: running</label>
-      {% else %}
-      <div class="alert alert-warning" role="alert">
-      {{ form.mfcnacon(class="btn btn-success") }}
-      <label for="name">Assetto Corsa native client: NOT running</label>
-      {% endif %}
-      </div>
-      <!-- MFC CM F1 native client control -->
-      {% if mfcncmf1 %}
-      <div class="alert alert-success" role="alert">
-      {{ form.mfcncmf1of(class="btn btn-warning") }}
-      <label for="name">CM F1 native client: running</label>
-      {% else %}
-      <div class="alert alert-warning" role="alert">
-      {{ form.mfcncmf1on(class="btn btn-success") }}
-      <label for="name">CM F1 native client: NOT running</label>
-      {% endif %}
-      </div>
-      <hr />
-      <div class="alert alert-warning" role="alert">
-      {% if mfcpoweroff %}
-      {% else %}
-      {{ form.mfcpoweroff(class="btn btn-danger") }}
-      <label for="name">SHUTDOWN MFC</label>
-      {% endif %}
-      </div>
-    </div>
-  </form>
-</div>
-<br>      
-</div>
-</div>
-</body>
-</html>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+    <form action="" method="post" role="form">
+        {{ form.csrf }}
+        <div class="form-group">
+
+            <hr/>
+            {% for proc in processes %}
+                {% if proc.status %}
+                    <div class="alert alert-success" role="alert">
+                    {{ form[proc.btn_off](class="btn btn-warning") }}
+                    <label for="name">{{ proc.label }}: running [view <a href=/logs/{{ proc.logfile | basename }}>log</a>]</label>
+                {% else %}
+                    <div class="alert alert-warning" role="alert">
+                    {{ form[proc.btn_on](class="btn btn-success") }}
+                    <label for="name">{{ proc.label }}: NOT running [view <a href=/logs/{{ proc.logfile | basename }}>log</a>]</label>
+                {% endif %}
+                </div>
+            {% endfor %}
+
+            <div class="alert alert-warning" role="alert">
+                {% if mfcpoweroff %}
+                {% else %}
+                    {{ form.mfcpoweroff(class="btn btn-danger") }}
+                    <label for="name">SHUTDOWN MFC</label>
+                {% endif %}
+            </div>
+    </form>
+{% endblock %}

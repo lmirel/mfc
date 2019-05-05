@@ -186,6 +186,7 @@ static void usage()
       "\t \t1a86:7523 QinHeng Electronics HL-340 USB-Serial adapter\n"\
       "\t \t10c4:ea60 Silicon Laboratories, Inc. CP2102 USB to UART\n"\
       "\t \t067b:2303 Prolific Technology, Inc. PL2303 Serial Port\n"\
+      "\t \t10c4:ea60 Cygnal Integrated Products, Inc. CP210x UART Bridge / myAVR mySmartUSB light"
       "\t \t067b:2303 Prolific Technology, Inc. USB-Serial Controller\n"\
       "\t \t0403:6001 Future Technology Devices International, Ltd FT232 USB-Serial (UART)\n");
   printf ("--scn output processing protocol specific to SCN5/6 controllers\n");
@@ -660,7 +661,7 @@ static int kngAdof_set_pos (int *pdata)
   dof2r -= dof2r % KNG_SMOOTHMOVE;
   //no speed processing for now
   if (lkngspd > 0 && rkngspd > 0)
-    kcl = snprintf (kngcmd, KNG_CMD_LEN, "R,P%d S%d\nL,P%d S%d\n", dof2r, rkngspd, dof2l, lkngspd);
+    kcl = snprintf (kngcmd, KNG_CMD_LEN, "R,P%d S%d\r\nL,P%d S%d\r\n", dof2r, rkngspd, dof2l, lkngspd);
   else
     kcl = snprintf (kngcmd, KNG_CMD_LEN, "R,P%d\r\nL,P%d\r\n", dof2r, dof2l);
   //send command

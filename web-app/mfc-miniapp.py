@@ -20,7 +20,7 @@ def basename(path):
 
 
 class ServiceEntity(object):
-    default_runcmd = '/bin/bash -c "/opt/{0} $(cat /opt/{0}.default)"'
+    default_runcmd = '/bin/bash -c "/opt/mfc/{0} $(cat /opt/mfc/{0}.default)"'
     default_logfile = '/tmp/{0}.log'
 
     expected_responses = ["#i:ready", pexpect.EOF, pexpect.TIMEOUT]
@@ -67,13 +67,13 @@ class ServiceEntity(object):
         return fret
 
     def stop(self):
-        print("{} start".format(self.name))
+        print("{} stop".format(self.name))
         try:
             self.proc_ref.close(force=True)
         except:
             print('{} process unknown'.format(self.name))
-        finally:
-            self.proc_ref.logfile.close()
+        #finally:
+            #self.proc_ref.logfile.close()
 
         # maybe use psutil https://psutil.readthedocs.io/en/latest/#processes
         pids = [pid for pid in os.listdir('/proc') if pid.isdigit()]
@@ -102,6 +102,8 @@ def mfc_poweroff():
 
 # check running statuses
 def check_status():
+    for proc in processes.values():
+        proc.status = False
     pids = [pid for pid in os.listdir('/proc') if pid.isdigit()]
     for pid in pids:
         try:
@@ -126,7 +128,7 @@ btn_mappings = {}
 for item in processes.values():
 
     setattr(ReusableForm, item.btn_on, SubmitField(label='START'))
-    btn_mappings[item.btn_on] = (item, True,)
+    btn_mappings[item.btn_on] = (item, False,)
 
     setattr(ReusableForm, item.btn_off, SubmitField(label='STOP'))
     btn_mappings[item.btn_off] = (item, True,)
@@ -153,7 +155,7 @@ def cpanel():
                     break
 
             if proc_obj:
-                if is_start:
+                if not is_start:
                     try:
                         rv = proc_obj.start()
                     except ExceptionPexpect as err:
@@ -189,4 +191,4 @@ def download(filename):
 
 if __name__ == "__main__":
     check_status()
-    app.run(host='127.0.0.1', port=80)
+    app.run(host='0.0.0.0', port=80)

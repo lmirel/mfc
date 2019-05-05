@@ -661,7 +661,7 @@ static int process_packet(int user, s_packet * packet)
 {
   unsigned char type = packet->header.type;
   if (adapter_debug (0xff) & 0x0f)
-    fprintf (stderr, "\n#i:process pkt type 0x%x", type);
+    fprintf (stdout, "\n#i:process pkt type 0x%x", type);
   int ret = 0;
 
   switch (packet->header.type)
@@ -669,12 +669,18 @@ static int process_packet(int user, s_packet * packet)
   case E_TYPE_DESCRIPTORS:
     ret = send_index ();
     if (adapter_debug (0xff) & 0x0f)
-      fprintf (stderr, "\n#i:ready descriptors");
+    {
+      fprintf (stdout, "\n#i:ready descriptors");
+      fflush (stdout);
+    }
     break;
   case E_TYPE_INDEX:
     ret = send_endpoints ();
     if (adapter_debug (0xff) & 0x0f)
-      fprintf (stderr, "\n#i:ready indexes");
+    {
+      fprintf (stdout, "\n#i:ready indexes");
+      fflush (stdout);
+    }
     break;
   case E_TYPE_ENDPOINTS:
     gtimer_close (init_timer);
@@ -693,8 +699,8 @@ static int process_packet(int user, s_packet * packet)
         ret = send_next_in_packet ();
         if (adapter_debug (0xff) & 0x0f)
         {
-          fprintf (stderr, "\n#i:next IN packet");
-          fflush (stderr);
+          fprintf (stdout, "\n#i:next IN packet");
+          fflush (stdout);
         }
       }
     }
@@ -703,16 +709,16 @@ static int process_packet(int user, s_packet * packet)
     ret = send_out_packet (packet);
     if (adapter_debug (0xff) & 0x0f)
     {
-      fprintf (stderr, "\n#i:ready out pkt");
-      fflush (stderr);
+      fprintf (stdout, "\n#i:ready out pkt");
+      fflush (stdout);
     }
     break;
   case E_TYPE_CONTROL:
     ret = send_control_packet (packet);
     if (adapter_debug (0xff) & 0x0f)
     {
-      fprintf (stderr, "\n#i:ready ctrl");
-      fflush (stderr);
+      fprintf (stdout, "\n#i:ready ctrl");
+      fflush (stdout);
     }
     break;
   case E_TYPE_DEBUG:
@@ -730,8 +736,8 @@ static int process_packet(int user, s_packet * packet)
     {
       struct timeval tv;
       gettimeofday (&tv, NULL);
-          fprintf (stderr, "%ld.%06ld ", tv.tv_sec, tv.tv_usec);
-      fprintf (stderr, "unhandled packet (type=0x%02x)\n", type);
+          fprintf (stdout, "%ld.%06ld ", tv.tv_sec, tv.tv_usec);
+      fprintf (stdout, "unhandled packet (type=0x%02x)\n", type);
     }
     break;
   }
@@ -750,11 +756,9 @@ int proxy_init (int vid, int pid)
 
   if (path == NULL) 
   {
-    //fprintf (stderr, "No USB device selected!\n");
-    //printf ("\n#e:no USB device selected");
     return -1;
   }
-
+  //
   usb = gusb_open_path (path);
 
   if (usb < 0) 

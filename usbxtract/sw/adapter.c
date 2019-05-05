@@ -12,8 +12,6 @@
 #include <string.h>
 #include <stdio.h>
 
-#define USART_BAUDRATE 500000
-
 #define MAX_ADAPTERS 7
 
 #define PRINT_ERROR_OTHER(msg) fprintf(stderr, "%s:%d %s: %s\n", __FILE__, __LINE__, __func__, msg);
@@ -317,8 +315,8 @@ int adapter_send (int adapter, unsigned char type, const unsigned char * data, u
 
 int adapter_open(const char * port, ADAPTER_READ_CALLBACK fp_read, ADAPTER_WRITE_CALLBACK fp_write, ADAPTER_CLOSE_CALLBACK fp_close) 
 {
-
-  int serial = gserial_open(port, USART_BAUDRATE);
+  extern int sbaud;
+  int serial = gserial_open(port, sbaud);
   if (serial < 0) 
   {
     return -1;
@@ -338,7 +336,7 @@ int adapter_open(const char * port, ADAPTER_READ_CALLBACK fp_read, ADAPTER_WRITE
       }
       if (adapterDbg & 0x0f)
       {
-        fprintf (stdout, "\n#d:adapter opened %d", ret);
+        fprintf (stdout, "\n#d:adapter opened %d", serial);
         fflush (stdout);
       }
       return i;

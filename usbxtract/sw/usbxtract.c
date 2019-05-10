@@ -20,7 +20,7 @@
 
 static char * port = NULL;
 static char * udev = NULL;
-int vid = 0, pid = 0, sbaud = 500000;
+int vid = 0, pid = 0, sbaud = USART_BAUDRATE;
 
 static void usage()
 {

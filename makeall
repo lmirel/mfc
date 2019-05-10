@@ -2,6 +2,10 @@
 
 #disable this after first run
 #sudo apt install libusb-1.0-0-dev libudev-dev
+PKVER=`cat lib/extras.h | grep MFC_VER | cut -d'"' -f2`
+if [ ! -z "$1" ]; then
+  PKVER=$1
+fi
 
 TOOLS="
 mfcserver
@@ -11,7 +15,7 @@ for TOOL in $TOOLS
 do
   echo Making $TOOL:
   cd $TOOL
-  #make clean > /dev/null
+  make clean
   make
   cd ..
 done
@@ -27,7 +31,7 @@ for TOOL in $TOOLS1
 do
   echo Making $TOOL:
   cd $TOOL
-  #make clean > /dev/null
+  make clean
   make
   cd ../..
 done
@@ -41,10 +45,12 @@ cp clients/assetto-corsa/mfc-cli-ac .mfc/
 cp clients/cm-f1/mfc-cli-cm-f1      .mfc/
 cp clients/cm-dr/mfc-cli-cm-drally  .mfc/
 
+OSVER=`hostnamectl | grep Operating | cut -d " " -f5`
+
 #.tar.gz
-echo "compressing package.."
+echo "compressing package.."$PKVER$OSVER
 #tar -zcvf tar-archive-name.tar.gz source-folder-name
-tar -zcvf mfc-v0.8.1-linux.tar.gz .mfc/*
+tar -zcvf mfc-$PKVER-$OSVER.tar.gz .mfc/*
 echo "package ready"
 #untar gz
 #tar -zxvf tar-archive-name.tar.gz

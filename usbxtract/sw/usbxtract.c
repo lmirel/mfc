@@ -20,7 +20,7 @@
 
 static char * port = NULL;
 static char * udev = NULL;
-int vid = 0, pid = 0;
+int vid = 0, pid = 0, sbaud = USART_BAUDRATE;
 
 static void usage()
 {
@@ -48,7 +48,7 @@ int args_read(int argc, char *argv[])
     /* getopt_long stores the option index here. */
     int option_index = 0;
 
-    c = getopt_long (argc, argv, "c:d:t:d:Vh", long_options, &option_index);
+    c = getopt_long (argc, argv, "b:c:d:t:d:Vh", long_options, &option_index);
 
     /* Detect the end of the options. */
     if (c == -1)
@@ -73,6 +73,13 @@ int args_read(int argc, char *argv[])
 
     case 'd':
       udev = optarg;
+      ret++;
+      break;
+
+    case 'b':
+      sbaud = atoi (optarg);
+      if (sbaud == 0)
+        sbaud = 500000;
       ret++;
       break;
 

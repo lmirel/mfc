@@ -12,6 +12,14 @@
 
 #define USART_DOUBLE_SPEED false
 
+#define LED_CONFIG  (DDRD |= (1<<5))
+#define LED_ON      (PORTD &= ~(1<<5))
+#define LED_OFF     (PORTD |= (1<<5))
+
+#define LED2_CONFIG  (DDRB |= (1<<0))
+#define LED2_ON      (PORTB &= ~(1<<0))
+#define LED2_OFF     (PORTB |= (1<<0))
+
 /*
  * The access to these variables is synchronized.
  */
@@ -47,15 +55,19 @@ static volatile uint8_t controlStall = 0;
 static volatile uint8_t controlReplyLen = 0;
 
 static inline void forceHardReset(void) {
-
+  LED_OFF;
+  //LED2_ON;
+  LED_ON;
+  //LED2_OFF;
     cli(); // disable interrupts
     wdt_enable(WDTO_15MS); // enable watchdog
     while(1); // wait for watchdog to reset processor
 }
 
 static inline int8_t Serial_BlockingReceiveByte(void) {
-
+  LED2_ON;
     while(!Serial_IsCharReceived()) {}
+  LED2_OFF;
     return UDR1;
 }
 
@@ -82,13 +94,16 @@ static inline void send_control_header(void) {
     }
 
 static inline void ack(const uint8_t type) {
+    //LED2_ON;
     Serial_SendByte(type);
     Serial_SendByte(BYTE_LEN_0_BYTE);
+    //int i; for (i = 0; i < 2000; i++);
+    //LED2_OFF;
 }
 
 
 ISR(USART1_RX_vect) {
-
+  LED_OFF;
     uint8_t packet_type = UDR1;
     uint8_t value_len = Serial_BlockingReceiveByte();
     static const void * labels[] = { &&l_descriptors, &&l_index, &&l_endpoints, &&l_reset, &&l_control, &&l_control_stall, &&l_in };
@@ -103,11 +118,13 @@ ISR(USART1_RX_vect) {
     l_index:
     READ_VALUE_INC(pindex)
     ack(E_TYPE_INDEX);
+    LED_ON;
     return;
     l_endpoints:
     READ_VALUE((uint8_t*)&endpoints)
     ack(E_TYPE_ENDPOINTS);
     started = 1;
+    LED_ON;
     return;
     l_reset:
     forceHardReset();
@@ -147,7 +164,13 @@ void SetupHardware(void) {
 
     GlobalInterruptEnable();
 
+    LED_CONFIG;
+    LED2_CONFIG;
+
     LEDs_Init();
+
+    LED_OFF;
+    LED2_OFF;
 
     while(!started) {}
 
@@ -269,9 +292,8 @@ void SendNextInput(void) {
 }
 
 void ReceiveNextOutput(void) {
-
     if (outEndpointNumber > 0) {
-
+      LED_ON;
         static struct {
             struct {
                 uint8_t type;
@@ -307,6 +329,7 @@ void ReceiveNextOutput(void) {
                 Serial_SendData(&packet, sizeof(packet.header) + packet.header.length);
             }
         }
+        LED_OFF;
     }
 }
 

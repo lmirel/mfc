@@ -336,8 +336,6 @@ int main (int argc, char **argv, char **envp)
   unsigned int gpio;
   int len;
   int lport = UDP_PORT;
-  int _rollprc = 100;
-  int _pitchprc = 100;
   
   //roll and pitch percentage
   for (int i = 1; i < argc; i++)

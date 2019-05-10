@@ -11,8 +11,7 @@
 #include <gpoll.h>
 #include <string.h>
 #include <stdio.h>
-
-#define USART_BAUDRATE 500000
+#include <stdlib.h>
 
 #define MAX_ADAPTERS 7
 
@@ -317,10 +316,18 @@ int adapter_send (int adapter, unsigned char type, const unsigned char * data, u
 
 int adapter_open(const char * port, ADAPTER_READ_CALLBACK fp_read, ADAPTER_WRITE_CALLBACK fp_write, ADAPTER_CLOSE_CALLBACK fp_close) 
 {
-
-  int serial = gserial_open(port, USART_BAUDRATE);
+  extern int sbaud;
+  char tbuf[PATH_MAX];
+  int serial = -1;
+  if (realpath (port, tbuf))
+    serial = gserial_open (tbuf, sbaud);
   if (serial < 0) 
   {
+    if (adapterDbg & 0x0f)
+    {
+      fprintf (stdout, "\n#e:failed to open adapter '%s'->'%s':%d", port, tbuf, serial);
+      fflush (stdout);
+    }
     return -1;
   }
 
@@ -338,7 +345,7 @@ int adapter_open(const char * port, ADAPTER_READ_CALLBACK fp_read, ADAPTER_WRITE
       }
       if (adapterDbg & 0x0f)
       {
-        fprintf (stdout, "\n#d:adapter opened %d", ret);
+        fprintf (stdout, "\n#d:adapter opened '%s'->'%s':%d", port, tbuf, serial);
         fflush (stdout);
       }
       return i;

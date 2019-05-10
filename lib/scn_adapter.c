@@ -190,6 +190,7 @@ char s_port[] = "/dev/ttyUSB0";
 char *mcmd = NULL;
 
 #ifdef TRUN
+#define DEBUG 1
 int main (int argc, char **argv)
 {
   //strcpy (s_port, "/dev/ttyUSB0");

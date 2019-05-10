@@ -46,18 +46,21 @@
 //int usleep(long usec);
 //zero pos packet: corresponds to platform leveling
 static int zeropkt[MFC_PKT_SIZE] = {0};
-
+// - Arduino
 static int inoAdof_init ();
 //static int inoAdof_home_init ();
 static int inoAdof_set_home ();
 static int inoAdof_set_pos (int *pdata);
-
+static int inoAdof_release ();
+// - Kangaroo
 static int kngAdof_init ();
 //static int kngAdof_home_init ();
 static int kngAdof_set_home ();
 static int kngAdof_set_pos (int *pdata);
 static int kngAdof_onoff (int on);
-
+static int kngAdof_set_speed (int spd);
+static int kngAdof_release ();
+// -SCN5/6
 #define SCN_SPD_GEAR1   0x02EE
 #define SCN_SPD_GEAR2   0x04E2
 #define SCN_SPD_GEAR3   0x06D6
@@ -70,7 +73,13 @@ static int scnAdof_init ();
 static int scnAdof_home_init ();
 static int scnAdof_set_home ();
 static int scnAdof_set_pos (int *pdata);
-
+static int scnAdof_set_speed (int spd);
+static int scnAdof_release ();
+static int scnAdof_onoff (int on);
+static int scnAdof_consume (int fd);
+static int scnAdof_fill_fds(struct pollfd fds[]);
+static int scnAdof_get_status ();
+//
 int set_prio()
 {
   /*
@@ -480,7 +489,137 @@ int dof2pp = 0; //platform pitch
 int dof2pr = 0; //platform roll
 int dof1b = 0;
 #define SMOOTHMOVE  50
-#define INO_SMOOTHMOVE  5
+
+int xdof_init (char *lport, char *rport)
+{
+  switch (out_ifx)
+  {
+    case oi_kangaroo:
+      return kngAdof_init ();
+      break;
+    case oi_arduino:
+      return inoAdof_init ();
+      break;
+    case oi_scn:
+      return scnAdof_init ();
+    default: //oi_dummy
+      ;
+  }
+  return 1;
+}
+
+int xdof_release ()
+{
+  switch (out_ifx)
+  {
+    case oi_kangaroo:
+      kngAdof_release ();
+      break;
+    case oi_arduino:
+      inoAdof_release ();
+      break;
+    case oi_scn:
+      return scnAdof_release ();
+    default: //oi_dummy
+      ;
+  }
+  return 1;
+}
+
+int xdof_set_home ()
+{
+  switch (out_ifx)
+  {
+    case oi_arduino:
+      inoAdof_set_home ();
+      break;
+    case oi_scn:
+      return scnAdof_set_home ();
+    default: //oi_dummy
+      ;
+  }
+  //
+  return 1;
+}
+
+int xdof_set_speed (int spd)
+{
+  if (_odbg)
+    printf ("\n#i:motion %d speed 0x%04X", spd, spd);
+  //
+  if (spd < ds_gear1 || spd > ds_gear7)
+    spd = ds_gear1;
+
+  //
+  switch (out_ifx)
+  {
+    case oi_kangaroo:
+      kngAdof_set_speed (spd);
+      break;
+    case oi_arduino:
+      break;
+    case oi_scn:
+      return scnAdof_set_speed (spd);
+    default: //oi_dummy
+      ;
+  }
+  //
+  return 1;
+}
+
+/*
+  int pkt_type;
+  int pkt_dof_type;
+  int data[6];    //{pitch, roll, yaw, surge, sway, heave}
+  int speed;
+  //
+Pitch is the tilt of the car forwards or backwards in [°]
+Roll is how much the car is dipped to the left or right in [°]
+Yaw is the heading of the car (north, east, south, west) in [°]
+
+Surge means the acceleration of the car in longitudinal direction [g]
+Sway means the acceleration of the car in lateral direction [g]
+Heave means the acceleration up and down [g]
+
+//motion data packet
+pkt[0] = PKTT_DATA;
+pkt[1] = PKTT_2DOF;
+//motion
+pkt[2] = pl_pitch;  //pitch
+pkt[3] = pl_roll;   //roll
+pkt[4] = 0;         //yaw
+pkt[5] = 0;         //surge
+pkt[6] = 0;         //sway
+pkt[7] = 0;         //heave
+//speed
+pkt[8] = 0;         //speed
+*/
+
+int xdof_set_poss (int *pdata)
+{
+  xdof_set_pos (pdata);
+  //
+  return 0;
+}
+
+int xdof_fill_fds(struct pollfd fds[])
+{
+  switch (out_ifx)
+  {
+    case oi_kangaroo:
+      break;
+    case oi_arduino:
+      break;
+    case oi_scn:
+      return scnAdof_fill_fds (fds);
+    default: //oi_dummy
+      ;
+  }
+  return 0;
+}
+
+//
+//TODO use realpath() https://linux.die.net/man/3/realpath on open
 //
 static int xdof_find ()
 {
@@ -607,6 +746,10 @@ static int xdof_find ()
   //
   return pk;
 }
+
+//
+// Kangaroo
+// ---------
 
 //command has '\r\n' included
 static int kng_command_send (int fd, char *cmd)
@@ -754,11 +897,14 @@ static int kngAdof_init ()
   mfc_dof[dof_right].ctlport = dofports[0];
   //set-up FDs
   struct termios options;
+  char tbuf[PATH_MAX];
   i = dof_left;
   if (mfc_dof[i].ctlport)
   {
-    //open
-    mfc_dof[i].ctlfd = open (mfc_dof[i].ctlport, O_RDWR | O_NOCTTY | O_NONBLOCK);
+    //open using realpath() symlink to actual /dev/ttyUSBx
+    if (realpath (mfc_dof[i].ctlport, tbuf))
+      mfc_dof[i].ctlfd = open (tbuf, O_RDWR | O_NOCTTY | O_NONBLOCK);
+    //mfc_dof[i].ctlfd = open (mfc_dof[i].ctlport, O_RDWR | O_NOCTTY | O_NONBLOCK);
     if (mfc_dof[i].ctlfd == -1)
     {
       printf ("\n#E:DOF adapter not found on %s", mfc_dof[i].ctlport);
@@ -820,6 +966,24 @@ static int kngAdof_init ()
   return 1;
 }
 
+static int kngAdof_release ()
+{
+  kngAdof_onoff (0);
+  //dof right is the same as left
+  if (mfc_dof[dof_left].ctlfd > 0)
+  {
+    //close
+    close (mfc_dof[dof_left].ctlfd);
+  }
+  //
+  return 0;
+}
+
+//
+// Arduino
+// -------
+
+#define INO_SMOOTHMOVE  5
 static int inoAdof_init ()
 {
   int scnpk = xdof_find ();
@@ -849,11 +1013,14 @@ static int inoAdof_init ()
   mfc_dof[dof_back].ctlport = dofports[0];
   //set-up FDs
   struct termios options;
+  char tbuf[PATH_MAX];
   i = dof_back;
   if (mfc_dof[i].ctlport)
   {
-    //open
-    mfc_dof[i].ctlfd = open (mfc_dof[i].ctlport, O_RDWR | O_NOCTTY | O_NONBLOCK);
+    //open using realpath() symlink to actual /dev/ttyUSBx
+    if (realpath (mfc_dof[i].ctlport, tbuf))
+      mfc_dof[i].ctlfd = open (tbuf, O_RDWR | O_NOCTTY | O_NONBLOCK);
+    //mfc_dof[i].ctlfd = open (mfc_dof[i].ctlport, O_RDWR | O_NOCTTY | O_NONBLOCK);
     if (mfc_dof[i].ctlfd == -1)
     {
       printf ("\n#E:DOF adapter not found on %s", mfc_dof[i].ctlport);
@@ -882,6 +1049,70 @@ static int inoAdof_init ()
   //
   return 1;
 }
+
+static int inoAdof_release ()
+{
+  int i = dof_back;
+  if (mfc_dof[i].ctlfd > 0)
+  {
+    //close
+    close (mfc_dof[i].ctlfd);
+  }
+  //
+  return 0;
+}
+
+static int inoAdof_set_home ()
+{
+  //flush the speed response
+  inoAdof_set_pos (zeropkt);
+  //
+  return 1;
+}
+
+static char inocmd[12] = "XL--CXR--C";
+static int icl = 10;
+static int inoAdof_set_pos (int *pdata)
+{
+  //do some common computing here, to be reused
+  dof2l = dof2pp + dof2pr;
+  dof2r = dof2pp - dof2pr;
+  if (_odbg)
+    printf ("\n#i:in pos L%d, R%d", dof2l, dof2r);
+  //left
+  dof2l = get_cmap (dof2l, MFC_POS_MIN, MFC_POS_MAX, mfc_dof[dof_back].amin, mfc_dof[dof_back].amax);
+  //smooth curve: shave some positions to avoid the motor to move constantly
+  dof2l -= dof2l % INO_SMOOTHMOVE;
+  //avoid an issue with lack of move for this position
+  //right
+  dof2r = get_cmap (dof2r, MFC_POS_MIN, MFC_POS_MAX, mfc_dof[dof_back].amin, mfc_dof[dof_back].amax);
+  //smooth curve: shave some positions to avoid the motor to move constantly
+  dof2r -= dof2r % INO_SMOOTHMOVE;
+  //
+  inocmd[2] = *(((char *)&dof2l) + 1);
+  inocmd[3] = *(((char *)&dof2l));
+  inocmd[7] = *(((char *)&dof2r) + 1);
+  inocmd[8] = *(((char *)&dof2r));
+  //send command
+  if (write (mfc_dof[dof_back].ctlfd, inocmd, icl) != icl)
+  {
+    printf ("\n#E:DOF command '%s' failed for pos L%d, R%d",
+        inocmd, dof2l, dof2r);
+  }
+  //
+  if (_odbg)
+  {
+    printf ("\n#i:DOF cmd 'XL<%d>CXR<%d>C' <%d,%d><%d,%d>, pos L%d, R%d",
+        inocmd[2] * 256 + inocmd[3], inocmd[7] * 256 + inocmd[8],
+        inocmd[2], inocmd[3], inocmd[7], inocmd[8], dof2l, dof2r);
+  }
+  //
+  return 1;
+}
+
+//
+// SCN5/6
+// -------
 
 static int scnAdof_init ()
 {
@@ -950,15 +1181,17 @@ static int scnAdof_init ()
   }
   //set-up FDs
   struct termios options;
+  char tbuf[PATH_MAX];
   for (i = 0; i < DOF_MAX; i++)
   {
     if (mfc_dof[i].ctlport)
     {
-      //open
-      mfc_dof[i].ctlfd = open (mfc_dof[i].ctlport, O_RDWR | O_NOCTTY | O_NONBLOCK);
+      //open using realpath() symlink to actual /dev/ttyUSBx
+      if (realpath (mfc_dof[i].ctlport, tbuf))
+        mfc_dof[i].ctlfd = open (tbuf, O_RDWR | O_NOCTTY | O_NONBLOCK);
       if (mfc_dof[i].ctlfd == -1)
       {
-        printf ("\n#E:DOF adapter not found on %s", mfc_dof[i].ctlport);
+        printf ("\n#E:DOF adapter not found on '%s'->'%s'", mfc_dof[i].ctlport, tbuf);
         return -1;
       }
       //set options
@@ -973,7 +1206,8 @@ static int scnAdof_init ()
         printf ("\n#E:cannot set options for DOF adapter %s", mfc_dof[i].ctlport);
         return -1;
       }
-      printf("\n#i:connected to DOF#%d '%s', on %d", i + 1, mfc_dof[i].ctlport, mfc_dof[i].ctlfd);
+      printf("\n#i:connected to DOF#%d '%s'->'%s', on %d", i + 1,
+          mfc_dof[i].ctlport, tbuf, mfc_dof[i].ctlfd);
       //check adapter
       if (scn_get_status (mfc_dof[i].ctlfd) == 0)
       {
@@ -985,24 +1219,6 @@ static int scnAdof_init ()
   //
   scnAdof_home_init ();
   //
-  return 1;
-}
-
-int xdof_init (char *lport, char *rport)
-{
-  switch (out_ifx)
-  {
-    case oi_kangaroo:
-      return kngAdof_init ();
-      break;
-    case oi_arduino:
-      return inoAdof_init ();
-      break;
-    case oi_scn:
-      return scnAdof_init ();
-    default: //oi_dummy
-      ;
-  }
   return 1;
 }
 
@@ -1114,14 +1330,14 @@ static int scnAdof_home_init ()
   fflush (stdout);
   //
   scnAdof_set_home ();
-  sleep (3);
+  sleep (2); //TODO check PIF?
   printf (" homing done");
   fflush (stdout);
   //
   return 1;
 }
 
-int scnAdof_fill_fds(struct pollfd fds[])
+static int scnAdof_fill_fds(struct pollfd fds[])
 {
   int dk = 0, i;
   for (i = 0; i < DOF_MAX; i++)
@@ -1136,50 +1352,14 @@ int scnAdof_fill_fds(struct pollfd fds[])
   return dk;
 }
 
-int xdof_fill_fds(struct pollfd fds[])
-{
-  switch (out_ifx)
-  {
-    case oi_kangaroo:
-      break;
-    case oi_arduino:
-      break;
-    case oi_scn:
-      return scnAdof_fill_fds (fds);
-    default: //oi_dummy
-      ;
-  }
-  return 0;
-}
-
-static int kngAdof_release ()
-{
-  kngAdof_onoff (0);
-  //dof right is the same as left
-  if (mfc_dof[dof_left].ctlfd > 0)
-  {
-    //close
-    close (mfc_dof[dof_left].ctlfd);
-  }
-  //
-  return 0;
-}
-
-static int inoAdof_release ()
-{
-  int i = dof_back;
-  if (mfc_dof[i].ctlfd > 0)
-  {
-    //close
-    close (mfc_dof[i].ctlfd);
-  }
-  //
-  return 0;
-}
-
 static int scnAdof_release ()
 {
   int i;
+  scnAdof_onoff (1);
+  //balance the SCNs
+  scnAdof_set_home ();
+  sleep (2); //TODO check PIF?
+  //
   for (i = 0; i < DOF_MAX; i++)
   {
     if (mfc_dof[i].ctlfd > 0)
@@ -1192,32 +1372,6 @@ static int scnAdof_release ()
   }
   //
   return 0;
-}
-
-int xdof_release ()
-{
-  switch (out_ifx)
-  {
-    case oi_kangaroo:
-      kngAdof_release ();
-      break;
-    case oi_arduino:
-      inoAdof_release ();
-      break;
-    case oi_scn:
-      return scnAdof_release ();
-    default: //oi_dummy
-      ;
-  }
-  return 1;
-}
-
-static int inoAdof_set_home ()
-{
-  //flush the speed response
-  inoAdof_set_pos (zeropkt);
-  //
-  return 1;
 }
 
 static int scnAdof_set_home ()
@@ -1274,22 +1428,6 @@ static int scnAdof_set_home ()
   return 0;
 }
 
-int xdof_set_home ()
-{
-  switch (out_ifx)
-  {
-    case oi_arduino:
-      inoAdof_set_home ();
-      break;
-    case oi_scn:
-      return scnAdof_set_home ();
-    default: //oi_dummy
-      ;
-  }
-  //
-  return 1;
-}
-
 /*
 spd: speeds 
 doc: speed order default value set range is 0000H..57E4H with unit of 0.2r/min
@@ -1320,66 +1458,6 @@ static int scnAdof_set_speed (int spd)
   return 0;
 }
 
-int xdof_set_speed (int spd)
-{
-  if (_odbg)
-    printf ("\n#i:motion %d speed 0x%04X", spd, spd);
-  //
-  if (spd < ds_gear1 || spd > ds_gear7)
-    spd = ds_gear1;
-  
-  //
-  switch (out_ifx)
-  {
-    case oi_kangaroo:
-      kngAdof_set_speed (spd);
-      break;
-    case oi_arduino:
-      break;
-    case oi_scn:
-      return scnAdof_set_speed (spd);
-    default: //oi_dummy
-      ;
-  }
-  //
-  return 1;
-}
-
-/*
-  int pkt_type;
-  int pkt_dof_type;
-  int data[6];    //{pitch, roll, yaw, surge, sway, heave}
-  int speed;
-  //
-Pitch is the tilt of the car forwards or backwards in [°]
-Roll is how much the car is dipped to the left or right in [°]
-Yaw is the heading of the car (north, east, south, west) in [°]
-
-Surge means the acceleration of the car in longitudinal direction [g]
-Sway means the acceleration of the car in lateral direction [g]
-Heave means the acceleration up and down [g]
-
-//motion data packet
-pkt[0] = PKTT_DATA;
-pkt[1] = PKTT_2DOF;
-//motion
-pkt[2] = pl_pitch;  //pitch
-pkt[3] = pl_roll;   //roll
-pkt[4] = 0;         //yaw
-pkt[5] = 0;         //surge
-pkt[6] = 0;         //sway
-pkt[7] = 0;         //heave
-//speed
-pkt[8] = 0;         //speed
-*/
-
-int xdof_set_poss (int *pdata)
-{
-  xdof_set_pos (pdata);
-  //
-  return 0;
-}
-
 static int scndof_move (int idx)
 {
   if (mfc_dof[idx].ctlfd > 0)
@@ -1397,46 +1475,6 @@ static int dmyAdof_set_pos (int *pdata)
   return 1;
 }
 
-static char inocmd[12] = "XL--CXR--C";
-static int icl = 10;
-static int inoAdof_set_pos (int *pdata)
-{
-  //do some common computing here, to be reused
-  dof2l = dof2pp + dof2pr;
-  dof2r = dof2pp - dof2pr;
-  if (_odbg)
-    printf ("\n#i:in pos L%d, R%d", dof2l, dof2r);
-  //left
-  dof2l = get_cmap (dof2l, MFC_POS_MIN, MFC_POS_MAX, mfc_dof[dof_back].amin, mfc_dof[dof_back].amax);
-  //smooth curve: shave some positions to avoid the motor to move constantly
-  dof2l -= dof2l % INO_SMOOTHMOVE;
-  //avoid an issue with lack of move for this position
-  //right
-  dof2r = get_cmap (dof2r, MFC_POS_MIN, MFC_POS_MAX, mfc_dof[dof_back].amin, mfc_dof[dof_back].amax);
-  //smooth curve: shave some positions to avoid the motor to move constantly
-  dof2r -= dof2r % INO_SMOOTHMOVE;
-  //
-  inocmd[2] = *(((char *)&dof2l) + 1);
-  inocmd[3] = *(((char *)&dof2l));
-  inocmd[7] = *(((char *)&dof2r) + 1);
-  inocmd[8] = *(((char *)&dof2r));
-  //send command
-  if (write (mfc_dof[dof_back].ctlfd, inocmd, icl) != icl)
-  {
-    printf ("\n#E:DOF command '%s' failed for pos L%d, R%d",
-        inocmd, dof2l, dof2r);
-  }
-  //
-  if (_odbg)
-  {
-    printf ("\n#i:DOF cmd 'XL<%d>CXR<%d>C' <%d,%d><%d,%d>, pos L%d, R%d",
-        inocmd[2] * 256 + inocmd[3], inocmd[7] * 256 + inocmd[8],
-        inocmd[2], inocmd[3], inocmd[7], inocmd[8], dof2l, dof2r);
-  }
-  //
-  return 1;
-}
-
 static int scnAdof_set_pos (int *pdata)
 {
   if (dof_count == 6)
@@ -1451,14 +1489,16 @@ static int scnAdof_set_pos (int *pdata)
       dof1b = pdata[MFC_PIYAW] + pdata[MFC_PISWAY];
       if (_odbg)
         printf ("\n#i:back pos R%d", dof1b);
-      dof1b = get_cmap (dof1b, MFC_POS_MIN, MFC_POS_MAX, mfc_dof[dof_back].cmax, mfc_dof[dof_back].cmin);
+      mfc_dof[dof_back].pos = get_cmap (dof1b, MFC_POS_MIN, MFC_POS_MAX, mfc_dof[dof_back].cmax, mfc_dof[dof_back].cmin);
       //smooth curve: shave some positions to avoid the motor to move constantly
       mfc_dof[dof_back].pos -= mfc_dof[dof_back].pos % SMOOTHMOVE;
       //avoid an issue with lack of move for this position
       if (mfc_dof[dof_back].pos == -5000)
         mfc_dof[dof_back].pos++;
       //move it to position
-      scn_set_pos (mfc_dof[dof_back].ctlfd, mfc_dof[dof_back].pos);
+      if (_odbg)
+        printf ("\n#i:back pos2 R%d", mfc_dof[dof_back].pos);
+      //scn_set_pos (mfc_dof[dof_back].ctlfd, mfc_dof[dof_back].pos);
       //scn_get_response (mfc_dof[dof_back].ctlfd, rsp);
     }
     else
@@ -1543,7 +1583,7 @@ int xdof_set_pos (int *pdata)
 {
   //commonly used
   dof2pp = pdata[MFC_PIPITCH] + pdata[MFC_PISURGE] + pdata[MFC_PIHEAVE];
-  dof2pr = pdata[MFC_PIROLL]; // + pdata[MFC_PISWAY]; // added later on 2+4 DOFs
+  dof2pr = pdata[MFC_PIROLL];// + pdata[MFC_PISWAY]; used for 3rd/5th DOF
   //
   switch (out_ifx)
   {
@@ -1640,7 +1680,7 @@ int xdof_stop ()
 }
 
 //this takes long to execute
-int scnAdof_get_status ()
+static int scnAdof_get_status ()
 {
   int i; for (i = 0; i < DOF_MAX; i++)
   {
@@ -1669,7 +1709,7 @@ int xdof_get_status ()
   return 1;
 }
 //
-int scnAdof_consume (int fd)
+static int scnAdof_consume (int fd)
 {
   int i; for (i = 0; i < DOF_MAX; i++)
   {

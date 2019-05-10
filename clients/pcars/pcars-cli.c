@@ -254,8 +254,6 @@ int main(int argc, char **argv, char **envp)
   unsigned int gpio;
   int len;
   int lport = SMS_UDP_PORT; /* Project Cars sends to this port: 5605 */
-  int _rollprc = 100;
-  int _pitchprc = 100;
   
   //roll and pitch percentage
   for (int i = 1; i < argc; i++)
@@ -399,8 +397,8 @@ int main(int argc, char **argv, char **envp)
   memset(&pClasses, 0, sizeof( sVehicleClassNamesData ));
   memset(&sTelem, 0, sizeof( sTelemetryData ));
   //int wpkt[MFC_PKT_SIZE] = {0};
-  int mpkt[MFC_PKT_SIZE] = {0, 0, -1650, -1050, -2550, -1650, -2550, -1050, 0};
-  int Mpkt[MFC_PKT_SIZE] = {1, 1,  2350,  3450,  2650,  2350,  2650,  3450, 1};
+  int mpkt[MFC_PKT_SIZE] = {0, 0, -1650, -1050, -2550, -1650, -1200, -1050, 0};
+  int Mpkt[MFC_PKT_SIZE] = {1, 1,  2350,  3450,  2650,  2350,  1200,  3450, 1};
   //
   int *_cpkt = mfc_bcast_pktget ();
   int pktl = mfc_bcast_pktlen ();
@@ -577,20 +575,22 @@ End With
       printf ("\n#i:pitch%% \t%d \t%d \t%d \troll%% \t%d \t%d \t%d", 
         _cpkt[MFC_PIPITCH], _cpkt[MFC_PISURGE], _cpkt[MFC_PIHEAVE], _cpkt[MFC_PIROLL], _cpkt[MFC_PISWAY], _cpkt[MFC_PIYAW]);
     //
-    if (0)//disable automax
+    if (1)//disable automax
     {
       int _newrange = 0;
       for (int i = MFC_PIDOF + 1; i < MFC_PIDOF + 7; ++i)
       {
         if (_cpkt[i] < mpkt[i])
         {
-          mpkt[i] = _cpkt[i];
-          _newrange = 1;
+          //mpkt[i] = _cpkt[i];
+          //_newrange = 1;
+          printf ("\n#E:%d# [%d.. %d ..%d]", i, mpkt[i], _cpkt[i], Mpkt[i]);
         }
         if (_cpkt[i] > Mpkt[i])
         {
-          Mpkt[i] = _cpkt[i];
-          _newrange = 1;
+          //Mpkt[i] = _cpkt[i];
+          //_newrange = 1;
+          printf ("\n#E:%d# [%d.. %d ..%d]", i, mpkt[i], _cpkt[i], Mpkt[i]);
         }
         //
         if (0 && (_cpkt[i] < -550 || _cpkt[i] > 550))

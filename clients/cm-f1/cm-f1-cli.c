@@ -299,6 +299,12 @@ B. right axis composition
 a. g-force - longitudinal/pitch - overwrite
 b. g-force - lateral (invert) - add
 */
+int _pitchprc = 100;
+int _rollprc = 100;
+int _yawprc = 100;
+int _surgeprc = 100;
+int _swayprc = 100;
+int _heaveprc = 100;
 char _odbg = 0;
 int main (int argc, char **argv, char **envp)
 {
@@ -308,8 +314,6 @@ int main (int argc, char **argv, char **envp)
   unsigned int gpio;
   int len;
   int lport = UDP_PORT;
-  int _rollprc = 100;
-  int _pitchprc = 100;
   
   //roll and pitch percentage
   for (int i = 1; i < argc; i++)
@@ -317,17 +321,37 @@ int main (int argc, char **argv, char **envp)
     if (argv[i][0] == '-')
       switch (argv[i][1])
       {
-        //profiling params
-        case 'r': //roll %
-          _rollprc = atoi (argv[i]+2);
-          if (_rollprc < 0 || _rollprc > 100)
-            _rollprc = 100;
-          break;
-        case 'p': //pitch %
-          _pitchprc = atoi (argv[i]+2);
-          if (_pitchprc < 0 || _pitchprc > 100)
-            _pitchprc = 100;
-          break;
+      //profiling params
+      case 'r': //roll %
+        _rollprc = atoi (argv[i]+2);
+        //if (_rollprc < 0 || _rollprc > 100)
+        //  _rollprc = 100;
+        break;
+      case 'p': //pitch %
+        _pitchprc = atoi (argv[i]+2);
+        //if (_pitchprc < 0 || _pitchprc > 100)
+        //  _pitchprc = 100;
+        break;
+      case 'y': //yaw %
+        _yawprc = atoi (argv[i]+2);
+        //if (_yawprc < 0 || _yawprc > 100)
+        //  _yawprc = 100;
+        break;
+      case 's': //surge %
+        _surgeprc = atoi (argv[i]+2);
+        //if (_surgeprc < 0 || _surgeprc > 100)
+        //  _surgeprc = 100;
+        break;
+      case 'w': //sway %
+        _swayprc = atoi (argv[i]+2);
+        //if (_swayprc < 0 || _swayprc > 100)
+        //  _swayprc = 100;
+        break;
+      case 'h': //heave %
+        _heaveprc = atoi (argv[i]+2);
+        //if (_heaveprc < 0 || _heaveprc > 100)
+        //  _heaveprc = 100;
+        break;
         case 'l': //listen port
           lport = atoi (argv[i]+2);
           break;
@@ -337,8 +361,12 @@ int main (int argc, char **argv, char **envp)
   printf ("\n# ##");
   printf ("\n#MFC CM F1 client");
   printf ("\n#running configuration:");
-  printf ("\n#   roll feedback %d%% (-r%d) range [0..100]%%", _rollprc, _rollprc);
   printf ("\n#  pitch feedback %d%% (-p%d) range [0..100]%%", _pitchprc, _pitchprc);
+  printf ("\n#   roll feedback %d%% (-r%d) range [0..100]%%", _rollprc, _rollprc);
+  printf ("\n#    yaw feedback %d%% (-y%d) range [0..100]%%", _yawprc, _yawprc);
+  printf ("\n#  surge feedback %d%% (-s%d) range [0..100]%%", _surgeprc, _surgeprc);
+  printf ("\n#   sway feedback %d%% (-w%d) range [0..100]%%", _swayprc, _swayprc);
+  printf ("\n#  heave feedback %d%% (-h%d) range [0..100]%%", _heaveprc, _heaveprc);
   printf ("\n#     client port %d (-l%d)", lport, lport);
   //printf ("\n#     server port %d", MFCSVR_PORT);
   printf ("\n# verbosity level %d (-d%d)", _odbg, _odbg);
@@ -388,11 +416,12 @@ int main (int argc, char **argv, char **envp)
   si_other.sin_family = AF_INET;
   si_other.sin_port = htons(65001);
   pktk = 990;
+#if 0
   if (inet_aton("127.0.0.1", &si_other.sin_addr)==0) {
     fprintf(stderr, "inet_aton() failed\n");
     exit(1);
   }
-
+#endif
   printf ("\n#i:>%d:listening on port %d", s, lport);
   //ctime_ms (1);
   //learning values
@@ -438,7 +467,7 @@ int main (int argc, char **argv, char **envp)
       lminl = lmaxl = lminr = lmaxr = 0.0f;
       printf(".");
       fflush (stdout);
-      usleep (1000000);
+      sleep (1);
     }
               
     if (fdset[0].revents & POLLIN)

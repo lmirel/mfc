@@ -32,3 +32,5 @@ the end result using the xtractors on a PS4 system looks something like this:<br
 <br>Tested on a system using Raspberry PI2/3.
 <br><br>
 USE AT YOUR OWN RISK and Enjoy!
+
+consider a small donation if you feel this helped you: https://paypal.me/lazarmirel

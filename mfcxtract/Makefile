@@ -18,6 +18,7 @@ all: $(program_NAME)
 
 $(program_NAME): $(program_OBJS)
 	$(LINK.cc) $(program_OBJS) $(LDLIBS) -o $(program_NAME)
+	cp $(program_NAME) /opt/mfc/
 
 clean:
 	@- $(RM) $(program_NAME)

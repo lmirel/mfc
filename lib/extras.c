@@ -266,6 +266,30 @@ void bcast_close ()
     close (bcast_sock);
 }
 
+// https://stackoverflow.com/questions/2602823/in-c-c-whats-the-simplest-way-to-reverse-the-order-of-bits-in-a-byte
+//Index 1==0b0001 => 0b1000
+//Index 7==0b0111 => 0b1110
+//etc
+static unsigned char lookup[16] = {
+0x0, 0x8, 0x4, 0xc, 0x2, 0xa, 0x6, 0xe,
+0x1, 0x9, 0x5, 0xd, 0x3, 0xb, 0x7, 0xf, };
+
+unsigned char reverse_char(unsigned char n)
+{
+   // Reverse the top and bottom nibble then swap them.
+   return (lookup[n&0b1111] << 4) | lookup[n>>4];
+}
+
+// Detailed breakdown of the math
+//  + lookup reverse of bottom nibble
+//  |       + grab bottom nibble
+//  |       |        + move bottom result into top nibble
+//  |       |        |     + combine the bottom and top results
+//  |       |        |     | + lookup reverse of top nibble
+//  |       |        |     | |       + grab top nibble
+//  V       V        V     V V       V
+// (lookup[n&0b1111] << 4) | lookup[n>>4]
+
 long get_map (long x, long in_min, long in_max, long out_min, long out_max)
 {
   return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
@@ -401,4 +425,14 @@ unsigned long get_millis ()
   //get current time
   clock_gettime (CLOCK_REALTIME, &lts);
   return (lts.tv_sec * 1000L + lts.tv_nsec / 1000000L);
+}
+
+//get delta time since the previous call
+unsigned int dtime_ms ()
+{
+  static unsigned long lms = 0;
+  unsigned long cms = get_millis ();
+  unsigned long ms = cms - lms;
+  lms = cms;
+  return (unsigned int)ms;
 }

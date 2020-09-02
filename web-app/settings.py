@@ -4,7 +4,7 @@ SECRET_KEY = '7d441f27d441f27567d441f2b6176a'
 
 PROCESSES_CONFIG = [
     {
-        'ref': 'mfcsvr',
+        'ref': 'mfc-server',
         'name': 'MFC SVR',
         'label': 'MFC server',
         'desc': 'platform motion control server',
@@ -18,14 +18,14 @@ PROCESSES_CONFIG = [
         'bin': 'mfc-xtract',
     },
     {
-        'ref': 'usbxtract',
+        'ref': 'usb-xtract',
         'name': 'USB Xtractor',
         'label': 'USB Xtractor',
         'desc': 'HID controller proxy',
-        'bin': 'usbxtract',
+        'bin': 'usb-xtract',
     },
     {
-        'ref': 'mfccmf1',
+        'ref': 'mfc-cli-cm-f1',
         'name': 'MFC CM F1',
         'label': 'CM F1 native client',
         'desc': 'codemasters F1',
@@ -33,7 +33,7 @@ PROCESSES_CONFIG = [
         'expect_timeout': 10,
     },
     {
-        'ref': 'mfcpcars',
+        'ref': 'mfc-cli-pcars2',
         'name': 'MFC PCARS',
         'label': 'PCARS native client',
         'desc': 'project cars 2',
@@ -41,7 +41,7 @@ PROCESSES_CONFIG = [
         'expect_timeout': 10,
     },
     {
-        'ref': 'mfcnac',
+        'ref': 'mfc-cli-nac',
         'name': 'MFC AC',
         'label': 'Assetto Corsa native client',
         'desc': 'assetto corsa',

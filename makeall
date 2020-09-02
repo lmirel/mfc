@@ -39,7 +39,7 @@ done
 mkdir -p .mfc
 cp mfcserver/mfc-server .mfc/
 cp mfcxtract/mfc-xtract   .mfc/
-cp usbxtract/sw/usbxtract .mfc/usbxtract
+cp usbxtract/sw/usb-xtract .mfc/usb-xtract
 cp clients/pcars/mfc-cli-pcars2     .mfc/
 cp clients/assetto-corsa/mfc-cli-ac .mfc/
 cp clients/cm-f1/mfc-cli-cm-f1      .mfc/

@@ -123,7 +123,7 @@ void terminate (int sig)
 {
   _done = 1;
 }
-
+#if 0
 static unsigned int dtime_ms ()
 {
   static unsigned long lms = 0;
@@ -132,7 +132,7 @@ static unsigned int dtime_ms ()
   lms = cms;
   return (unsigned int)ms;
 }
-
+#endif
 unsigned long mtime_get (int reset)
 {
   static unsigned long _tlast = 0;
@@ -1328,6 +1328,22 @@ static int scnAdof_home_init ()
   //
   printf ("\n#i:wait for homing to finish..");
   fflush (stdout);
+  //set min speed
+  for (i = 0; i < DOF_MAX; i++)
+  {
+    if (mfc_dof[i].ctlfd > 0)
+    {
+      if (scn_get_status (mfc_dof[i].ctlfd) == 0)
+      {
+        printf ("\n#E:motion platform not responding, bailing out");
+        _done = 1;
+        return -1;
+      }
+      //set speed to min
+      scn_set_vel (mfc_dof[i].ctlfd, scn_speeds[ds_gear1], DEFA_ACMD);
+      scn_get_response (mfc_dof[i].ctlfd, rsp);
+    }
+  }
   //
   scnAdof_set_home ();
   sleep (2); //TODO check PIF?
@@ -1377,25 +1393,10 @@ static int scnAdof_release ()
 static int scnAdof_set_home ()
 {
   char rsp[20];
-  int i; for (i = 0; i < DOF_MAX; i++)
-  {
-    if (mfc_dof[i].ctlfd > 0)
-    {
-      if (scn_get_status (mfc_dof[i].ctlfd) == 0)
-      {
-        printf ("\n#E:motion platform not responding, bailing out");
-        _done = 1;
-        return -1;
-      }
-      //set speed to min
-      scn_set_vel (mfc_dof[i].ctlfd, scn_speeds[ds_gear1], DEFA_ACMD);
-      scn_get_response (mfc_dof[i].ctlfd, rsp);
-    }
-  }
   //flush the speed response
   scnAdof_set_pos (zeropkt);
   //
-  for (i = 0; i < DOF_MAX; i++)
+  int i; for (i = 0; i < DOF_MAX; i++)
   {
     if (mfc_dof[i].ctlfd > 0)
     {
@@ -1615,7 +1616,8 @@ static int scnAdof_onoff (int on)
   }
   else
   {
-    //off
+    //home
+    //then off
     for (i = 0; i < DOF_MAX; i++)
       if (mfc_dof[i].ctlfd > 0)
         //turn DOF off
@@ -1672,6 +1674,8 @@ int xdof_stop ()
     case oi_arduino:
       break;
     case oi_scn:
+      scnAdof_set_home ();
+      sleep (2); //TODO check PIF?
       return scnAdof_onoff (0);
     default: //oi_dummy
       ;

@@ -55,6 +55,7 @@ static unsigned int dtime2_ms ()
 
 static int motion_reset (unsigned int mdt);
 static int motion_compute (unsigned int mdt);
+static int get_accel_pitch (int lpacc);
 
 int motion_process_dummy (char *report, int retval, unsigned long mtime);
 int motion_process_thrustmaster (char *report, int retval, unsigned long mtime);
@@ -97,7 +98,6 @@ a. g-force - longitudinal/pitch - overwrite
 b. g-force - lateral (invert) - add
 */
 int pf_shiftspd = 100; //[50 .. 100]
-int pf_accspd = 350; //[50 .. 500]
 int _pitchprc = 65;
 int _rollprc = 100;
 int _yawprc = 100;
@@ -421,7 +421,7 @@ int main (int argc, char **argv, char **envp)
   char packetBuffer[UDP_MAX_PACKETSIZE];
   //
   int rlen = 0;
-  int _dts = -1, ldts = dtime_ms ();
+  int ndts = -1, ldts = dtime_ms ();
   int ppid = 0, vvid = 0;
   //motion measurements
   unsigned int ms_mot = (unsigned int)get_millis();
@@ -493,37 +493,48 @@ int main (int argc, char **argv, char **envp)
           printf ("\n#i.PKT len %d", rlen);
         switch ((char) packetBuffer[0])
         {
-          case (PKTT_DEBUG):  //debug data
+          case (PKTT_DATA):  //USB pkt arrival timestamp data
           {
-            if (_dts == -1)
-            {
-              vvid = packetBuffer[0] << 8 | packetBuffer[1];
-              ppid = packetBuffer[2] << 8 | packetBuffer[3];
-              printf ("\n//i.WHL %04x:%04x ", vvid, ppid);
-            }
-            _dts = packetBuffer[6] << 8 | packetBuffer[7];
+            ndts = packetBuffer[6] << 8 | packetBuffer[7];
             //printf ("\n#i.DBG@%04d: ", _dts);
             //select proper processing function based on VID+PID?!
             break;
           }
           //
-          case (PKTT_OUT):   //FFB data
+          case (PKTT_CTRL): //wheel VID&PID
+          {
+            vvid = packetBuffer[2] << 8 | packetBuffer[3];
+            ppid = packetBuffer[4] << 8 | packetBuffer[5];
+            printf ("\n//i.WHL %04x:%04x ", vvid, ppid);
+            //select proper processing function based on VID+PID?!
+            break;
+          }
+          //
+          case (PKTT_OUT):  //FFB data
           {
             if (_cap&CAP_FFB || _odbg)
             {
-              fprintf (stdout, "\n#i.FFB@%04d: ", _dts==-1?ldts:_dts);
+              if (ndts != -1)
+              {
+                ldts = ndts;
+                ndts = -1;  //reset network ts as we need another
+              }
+              fprintf (stdout, "\n#i.FFB@%04d: ", ldts);
               for (i = 0; i < rlen; i++)
                 fprintf (stdout, "%02x ", packetBuffer[i]);
             }
             break;
           }
-          case (PKTT_IN):   //WHL data
+          case (PKTT_IN): //WHL data
           {
             if (_cap&CAP_WHL || _odbg)
             {
-              if (_dts == -1)
-                _dts = dtime_ms ();
-              fprintf (stdout, "\n#i.WHL@%04d: ", _dts==-1?ldts:_dts);
+              if (ndts != -1)
+              {
+                ldts = ndts;
+                ndts = -1;  //reset network ts as we need another
+              }
+              fprintf (stdout, "\n#i.WHL@%04d: ", ldts);
               for (i = 0; i < rlen; i++)
                 fprintf (stdout, "%02x ", packetBuffer[i]);
             }
@@ -534,16 +545,14 @@ int main (int argc, char **argv, char **envp)
           {
             if (1)
             {
-              if (_dts == -1)
-                _dts = dtime_ms ();
-              printf ("\n#w.UNK@%04d: ", _dts==-1?ldts:_dts);
+              printf ("\n#w.UNK@%04d: ", ldts);
               for (i = 0; i < rlen; i++)
                 printf ("0x%02x, ", packetBuffer[i]);
             }
           }
         }//switch
         //
-        if (_procs[_p_idx].pf (packetBuffer, rlen, _dts==-1?ldts:_dts))
+        if (_procs[_p_idx].pf (packetBuffer, rlen, ldts))
           ppkt++;
         //
         if ((ppkt % 500) == 0)
@@ -554,17 +563,18 @@ int main (int argc, char **argv, char **envp)
     //send the motion packet
     if (rc && (ms_now - ms_mot >= _nlat))
     {
-      printf ("\n#i:%04x.motion@%ums vs %ums %06d:%06d", ms_now, ms_now - ms_mot,
+      if (0||_odbg)
+        printf ("\n#i:%4x.motion@%ums vs %ums p%06dr%06d", ms_now, ms_now - ms_mot,
           _nlat, _cpkt[MFC_PIPITCH], _cpkt[MFC_PIROLL]);
       //inc motion packets
       //mpktt++;
-      //
-      ms_mot = ms_now;
       //send the packet
       _cpkt[MFC_PISPEED] = ms_now;  //hide the timestamp here, for future ref
       mfc_bcast_send ();
       //
       motion_reset (ms_now - ms_mot);
+      //reset motion time to now
+      ms_mot = ms_now;
     }
   }
   //
@@ -592,10 +602,9 @@ b. g-force - lateral(roll) * invert - add
         float llv = (-1)*fv[1] + fv[0]; //(-)pitch + roll
         float lrv = (-1)*fv[1] - fv[0]; //(-)pitch - roll
 */
+int max_accel = 0;
 int pl_roll, pl_pitch = 0;  //entire platform roll/pitch
 //platform acceleration leveling
-int max_accel = 0;
-int c_accel = 0;
 int pw_roll, pw_pitch = 0;  //wheel forces
 int pf_roll, pf_pitch = 0, pf_sway = 0, pf_nudge = 0;  //ffb forces
 int pv_roll = 0;  //vibration forces
@@ -741,9 +750,9 @@ YAW	Yaw is the heading of the car (north, east, south, west) in [°]         //c
     _cpkt[MFC_PIROLL]  = get_cmap (pf_roll, -128, 128, -MFC_HPOS_MAX, MFC_HPOS_MAX);
   //add steering roll to platform roll?
   //printf ("\n#p.roll1 %d", _cpkt[MFC_PIROLL]);
-  _cpkt[MFC_PIROLL] += get_cmap (pw_roll, -MFC_HWHL_MAX, MFC_HWHL_MAX, -MFC_HPOS_MAX, MFC_HPOS_MAX);
+  _cpkt[MFC_PIROLL] += get_cmap (pw_roll, -MFC_HWHL_MAX/2, MFC_HWHL_MAX/2, -MFC_HPOS_MAX, MFC_HPOS_MAX);
   //printf ("\n#p.roll2 %d > %d", pw_roll, _cpkt[MFC_PIROLL]);
-
+#if 1
   //if we have strong wheel move, also move the platform
   if (abs (pf_roll > SWAY_CUTOFF))
   {
@@ -752,6 +761,7 @@ YAW	Yaw is the heading of the car (north, east, south, west) in [°]         //c
     pf_nudge = ((pf_roll > 0) ? (pf_roll - SWAY_CUTOFF) : (pf_roll + SWAY_CUTOFF));
     sway_flag = pf_nudge;
   }
+#endif
   //sway logic / traction loss
   if (pf_sway)
   {
@@ -777,7 +787,7 @@ YAW	Yaw is the heading of the car (north, east, south, west) in [°]         //c
   //  pf_sway = get_cmap (pw_roll, -16400, 16400, -64, 64) + pf_nudge;
   //}
   //
-  if (sway_flag && abs (pf_roll) == 1) //traction loss when wheel pos command follows wheel pos
+  if (sway_flag && abs (pf_roll) <= 1) //traction loss when wheel pos command follows wheel pos
   {
     sway_flag = 0;
     pf_sway = get_cmap (pw_roll, -MFC_HWHL_MAX, MFC_HWHL_MAX, -64, 64);
@@ -810,9 +820,9 @@ YAW	Yaw is the heading of the car (north, east, south, west) in [°]         //c
   }
   if (pf_sway) printf ("\n#d.sway2 move %d", pf_sway);
   //sway move: traction loss and strong ffb
-  _cpkt[MFC_PISWAY]  = get_cmap (pf_sway + pf_nudge, -128, 128, -10000, 10000);
+  _cpkt[MFC_PISWAY]  = get_cmap (pf_sway + pf_nudge, -128, 128, -MFC_HPOS_MAX, MFC_HPOS_MAX);
   //steering direction
-  _cpkt[MFC_PIYAW]   = get_cmap (pw_roll, -MFC_HWHL_MAX, MFC_HWHL_MAX, -10000, 10000);
+  _cpkt[MFC_PIYAW]   = get_cmap (pw_roll, -MFC_HWHL_MAX, MFC_HWHL_MAX, -MFC_POS_MAX, MFC_POS_MAX);
   //
   if (0||_odbg > 1)
     printf ("\n#i.raw roll:% 6d (r: % 5d / s: % 5d) | pitch: % 6d \t(p: % 5d / s: % 5d / h: % 5d)",
@@ -893,7 +903,7 @@ YAW	Yaw is the heading of the car (north, east, south, west) in [°]         //c
   _cpkt[MFC_PIYAW]   = 0;//get_cmap (pw_roll, -16400, 16400, -10000, 10000);
   #endif
   //speed
-  _cpkt[MFC_PISPEED] = 0;          //speed
+  _cpkt[MFC_PISPEED] = 0;//speed
   //
   if (_odbg)
     printf ("\n#i@%04d.roll:% 6d (r: % 5d / s: % 5d) | pitch: % 6d \t(p: % 5d / s: % 5d / h: % 5d)",
@@ -1121,33 +1131,8 @@ int motion_process_logitech (char *report, int rlen, unsigned long dtime)
           pw_pitch = lpbrk;  //cut off accel if brake pressed
         else
         {
-          //deal with acceleration platform leveling
-          if (max_accel == lpacc) //constant acceleration
-          {
-            //fprintf (stderr, "\n#i:1 lpacc %d \t max_acc %d \t c_acc %d", lpacc, max_accel, c_accel);
-            c_accel -= 20;//this needs to drop / ramp down regardless of the steering movement
-            //
-            if (c_accel < 0)
-              c_accel = 0;
-            //fprintf (stderr, "\n#i:2 lpacc %d \t max_acc %d \t c_acc %d", lpacc, max_accel, c_accel);
-          }
-          else if (max_accel < lpacc)//accelerate || max_accel > lpacc/*deccelerate*/)
-          {
-            c_accel += pf_accspd;//this needs to grow / ramp up regardless of the steering movement
-            if (c_accel > lpacc)
-              c_accel = lpacc;
-            max_accel = c_accel;
-            //_wd = 'F';
-          }
-          else
-          {
-            max_accel = lpacc;
-            c_accel = lpacc;
-            //fprintf (stderr, "\n#i:3 lpacc %d \t max_acc %d \t c_acc %d", lpacc, max_accel, c_accel);
-            //_wd = 'F';
-          }
           //
-          pw_pitch = c_accel + pf_accspd; //it should stay nose-up while accelerating
+          pw_pitch = get_accel_pitch (lpacc); //it should stay nose-up while accelerating
         }
         //pw_pitch = lpbrk; //accel-brake
         //
@@ -1405,7 +1390,7 @@ unsigned char ffb_lights[] =
 
 //no impact on wheel led, just the rev leds
 unsigned char ffb_lights2[] =
- //<type>,<len>,  03    30    f8    13  B2:B1:R3:R2:R1:Y3:Y2:Y1  B3    D1    D2    D3
+ //<type>,<len>,  03    30    f8    13  B2:B1:R3:R2 R1:Y3:Y2:Y1  B3    D1    D2    D3
   { 0x07, 0x09, 0x03, 0x30, 0xf8, 0x13, 0xff, 0x01, 0x00, 0x00, 0x00 };
 
 /*
@@ -1498,6 +1483,36 @@ unsigned char ffb_whlpos2[] =
 unsigned char ffb_whlvib1[] =
  //<type>,<len>,  03    30    11    0c    FF    00    FF    00    ff>
   { 0x07, 0x09, 0x03, 0x30, 0x11, 0x0c, 0xFF, 0x00, 0xFF, 0x00, 0xff };
+static int get_accel_pitch (int lpacc)
+{
+  static int c_accel = 0;
+  static const int pf_accspd = 350; //[50 .. 500]
+  //deal with acceleration platform leveling
+  if (max_accel == lpacc) //constant acceleration
+  {
+    //fprintf (stderr, "\n#i:1 lpacc %d \t max_acc %d \t c_acc %d", lpacc, max_accel, c_accel);
+    c_accel -= 20;//this needs to drop / ramp down regardless of the steering movement
+    //
+    if (c_accel < 0)
+      c_accel = 0;
+    //fprintf (stderr, "\n#i:2 lpacc %d \t max_acc %d \t c_acc %d", lpacc, max_accel, c_accel);
+  }
+  else if (max_accel < lpacc)//accelerate || max_accel > lpacc/*deccelerate*/)
+  {
+    c_accel += pf_accspd;//this needs to grow / ramp up regardless of the steering movement
+    if (c_accel > lpacc)
+      c_accel = lpacc;
+    max_accel = c_accel;
+  }
+  else
+  {
+    max_accel = lpacc;
+    c_accel = lpacc;
+    //fprintf (stderr, "\n#i:3 lpacc %d \t max_acc %d \t c_acc %d", lpacc, max_accel, c_accel);
+  }
+  //
+  return c_accel + pf_accspd; //it should stay nose-up while accelerating
+}
 
 int motion_process_fanatec (char *report, int rlen, unsigned long dtime)
 {
@@ -1506,8 +1521,17 @@ int motion_process_fanatec (char *report, int rlen, unsigned long dtime)
     dtime = 4;
   _wd = 'U';
   //ffb wheel pos: ffb roll
-  static int lwpos = 127, cwpos = 127; //wheel center pos default
+  static int lwpos = 127, cwpos = 127, revs = 0; //wheel center pos default
   static char max_revs = 0;
+  //max revs
+  if (revs == 9)
+  {
+    max_revs = ~max_revs;
+    if (max_revs)
+      pf_pitch = pf_shiftspd/2;
+    else
+      pf_pitch = 0;
+  }
   //
   switch ((char) report[0])
   {
@@ -1528,8 +1552,17 @@ int motion_process_fanatec (char *report, int rlen, unsigned long dtime)
       }
       else if (memcmp ((const void *) (report + 2), (const void *) (ffb_lights2 + 2), 4) == 0)
       {
-        //nothing to do here: lights
         _wd = 'U';
+        //nothing to do here: lights
+        revs = count_ones(report[6]) + (report[7] & 0x01);
+        //printf ("\n#d.rev2 level %02x %02x/%d", report[6], report[7], revs);
+        if (0||_odbg)
+        {
+          printf ("\n#w!FFB@%04lu: ", dtime);
+          for (int i = 0; i < rlen; i++)
+            printf ("%02x ", report[i]);
+        }
+        //pw_pitch = get_cmap ((long)revs, 0, 255, 0, MFC_HWHL_MAX);
       }
       else if (memcmp ((const void *) (report + 2), (const void *) (ffb_lights + 2), 5) == 0)
       {
@@ -1544,15 +1577,22 @@ int motion_process_fanatec (char *report, int rlen, unsigned long dtime)
         //#d.rev level fc/63
         //#d.rev level fe/127
         //#d.rev level ff/255
-        //printf ("\n#d.rev level %02x/%d", report[8], reverse_char((unsigned char)report[8]));
-        if (report[8] & 0x01)
+#if 0
+        revs = (int)count_ones((unsigned char)report[8]) + (report[7] & 0x01);
+        if (revs)
         {
-          max_revs = ~max_revs;
-          if (max_revs)
-            pf_pitch = pf_shiftspd/2;
-          else
-            pf_pitch = 0;
+          printf ("\n#d.rev1 level %02x %02x/%d", report[8], report[7], revs);
+          if (1||_odbg)
+          {
+            printf ("\n#w!FFB@%04lu: ", dtime);
+            for (int i = 0; i < rlen; i++)
+              printf ("%02x ", report[i]);
+          }
         }
+        //use revs level to pitch the platform: raise or dive
+        pw_pitch = get_cmap ((long)revs, 0, 255, 0, MFC_WHL_MAX);
+        //
+#endif
       }
       else if (memcmp ((const void *) (report + 2), (const void *) (ffb_whlvib1 + 2), 4) == 0)
       {
@@ -1577,11 +1617,14 @@ int motion_process_fanatec (char *report, int rlen, unsigned long dtime)
          * 128..255 | 0..127
          */
          cwpos = report[6];
-         pf_roll = normal_ffb2 (cwpos, lwpos);
+         pf_roll = normal_ffb2 (cwpos, lwpos);  //ffb wheel delta
+         //pf_roll = normal_ffb3 (cwpos); //ffb wheel pos
          //pf_roll = (cwpos > lwpos)? (cwpos - lwpos):-(lwpos - cwpos);
-         lwpos = cwpos;
          if (0||_odbg > 2)
-           printf ("\n#d.WHLPOS1 ffb roll %d / %d", pf_roll, ((int) report[6]));
+           printf ("\n#d.WHLPOS1 ffb roll %d / %d / %d", pf_roll, ((int) report[6]),
+               normal_ffb2 (cwpos, lwpos));
+         //
+         lwpos = cwpos;
          //
        }
       /*
@@ -1708,33 +1751,9 @@ FFB@002ms: 0002 01 ee 40 3d 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 0
         pw_pitch = lpbrk;  //cut off accel if brake pressed
       else
       {
-        //deal with acceleration platform leveling
-        if (max_accel == lpacc) //constant acceleration
-        {
-          //fprintf (stderr, "\n#i:1 lpacc %d \t max_acc %d \t c_acc %d", lpacc, max_accel, c_accel);
-          c_accel -= 20;//this needs to drop / ramp down regardless of the steering movement
-          //
-          if (c_accel < 0)
-            c_accel = 0;
-          //fprintf (stderr, "\n#i:2 lpacc %d \t max_acc %d \t c_acc %d", lpacc, max_accel, c_accel);
-        }
-        else if (max_accel < lpacc)//accelerate || max_accel > lpacc/*deccelerate*/)
-        {
-          c_accel += pf_accspd;//this needs to grow / ramp up regardless of the steering movement
-          if (c_accel > lpacc)
-            c_accel = lpacc;
-          max_accel = c_accel;
-          //_wd = 'F';
-        }
-        else
-        {
-          max_accel = lpacc;
-          c_accel = lpacc;
-          //fprintf (stderr, "\n#i:3 lpacc %d \t max_acc %d \t c_acc %d", lpacc, max_accel, c_accel);
-          //_wd = 'F';
-        }
-        //
-        pw_pitch = c_accel + pf_accspd; //it should stay nose-up while accelerating
+        //add revs to nose pitch
+        pw_pitch = get_cmap ((long)get_accel_pitch(lpacc), 0, MFC_WHL_MAX, 0, MFC_HWHL_MAX);
+        pw_pitch += get_cmap ((long)revs, 0, 9, 0, MFC_HWHL_MAX);
       }
       //pw_pitch = lpbrk; //accel-brake
       //
@@ -2249,33 +2268,8 @@ FFB@00003ms: ee 40 35 20 00 06 06 f1 ff 00 00 14 14 00 00 00 00 00 00 00 00 00 0
         pw_pitch = lpbrk;  //cut off accel if brake pressed
       else
       {
-        //deal with acceleration platform leveling 
-        if (max_accel == lpacc) //constant acceleration
-        {
-          //fprintf (stderr, "\n#i:1 lpacc %d \t max_acc %d \t c_acc %d", lpacc, max_accel, c_accel);
-          c_accel -= 20;//this needs to drop / ramp down regardless of the steering movement
-          //
-          if (c_accel < 0)
-            c_accel = 0;
-          //fprintf (stderr, "\n#i:2 lpacc %d \t max_acc %d \t c_acc %d", lpacc, max_accel, c_accel);
-        }
-        else if (max_accel < lpacc)//accelerate || max_accel > lpacc/*deccelerate*/)
-        {
-          c_accel += pf_accspd;//this needs to grow / ramp up regardless of the steering movement
-          if (c_accel > lpacc)
-            c_accel = lpacc;
-          max_accel = c_accel;
-          //_wd = 'F';
-        }
-        else
-        {
-          max_accel = lpacc;
-          c_accel = lpacc;
-          //fprintf (stderr, "\n#i:3 lpacc %d \t max_acc %d \t c_acc %d", lpacc, max_accel, c_accel);
-          //_wd = 'F';
-        }
         //
-        pw_pitch = c_accel + pf_accspd; //it should stay nose-up while accelerating
+        pw_pitch = get_accel_pitch(lpacc); //it should stay nose-up while accelerating
       }
       //pw_pitch = lpbrk; //accel-brake
       //

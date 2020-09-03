@@ -123,8 +123,17 @@ int normal_axis (int val, int max);
 int normal_pedal (int val, int max);
 int normal_brake (int val, int max);
 int normal_accel (int val, int max);
+//ffb is: 128..255<L R>1..127
+//output: 128..0<>-1..-127
 int normal_ffb (int val, int mid);
+//ffb is: 128..255<L R>1..127
+//output: delta from mid: -128..0<L R>1..127
 int normal_ffb2 (int val, int mid);
+//ffb is: 128..255<>1..127
+//output: -128..0<L R>1..127
+int normal_ffb3 (int val);
+
+char count_ones (char byte);
 
 unsigned char reverse_char(unsigned char n);
 //get millis since the Epoch, 1970-01-01 00:00:00 +0000 (UTC)

@@ -270,16 +270,6 @@ void bcast_close ()
 //Index 1==0b0001 => 0b1000
 //Index 7==0b0111 => 0b1110
 //etc
-static unsigned char lookup[16] = {
-0x0, 0x8, 0x4, 0xc, 0x2, 0xa, 0x6, 0xe,
-0x1, 0x9, 0x5, 0xd, 0x3, 0xb, 0x7, 0xf, };
-
-unsigned char reverse_char(unsigned char n)
-{
-   // Reverse the top and bottom nibble then swap them.
-   return (lookup[n&0b1111] << 4) | lookup[n>>4];
-}
-
 // Detailed breakdown of the math
 //  + lookup reverse of bottom nibble
 //  |       + grab bottom nibble
@@ -289,6 +279,25 @@ unsigned char reverse_char(unsigned char n)
 //  |       |        |     | |       + grab top nibble
 //  V       V        V     V V       V
 // (lookup[n&0b1111] << 4) | lookup[n>>4]
+
+unsigned char reverse_char(unsigned char n)
+{
+  static const char lookup[16] = {
+  0x0, 0x8, 0x4, 0xc, 0x2, 0xa, 0x6, 0xe,
+  0x1, 0x9, 0x5, 0xd, 0x3, 0xb, 0x7, 0xf, };
+   // Reverse the top and bottom nibble then swap them.
+   return (lookup[n&0b1111] << 4) | lookup[n>>4];
+}
+
+char count_ones (char byte)
+{
+  static const char lookup [16] =
+  {
+    0, 1, 1, 2, 1, 2, 2, 3,
+    1, 2, 2, 3, 2, 3, 3, 4
+  };
+  return lookup[byte & 0x0F] + lookup[byte >> 4];
+}
 
 long get_map (long x, long in_min, long in_max, long out_min, long out_max)
 {
@@ -402,21 +411,24 @@ int normal_accel (int val, int max)
 }
 
 //ffb is: 128..255<L R>1..127
+//output: 128..0<>-1..-127
 int normal_ffb (int val, int max)
 {
-  int rv;
-  if (val > 127)
-    rv = max - val;
-  else
-    rv = - val;
-  //
-  return rv;
+  return (val > 127) ? (max - val) : (-val);
 }
 
-//ffb2 is: 128..255<L R>1..127
+//ffb is: 128..255<L R>1..127
+//output: delta from mid: -128..0<L R>1..127
 int normal_ffb2 (int val, int mid)
 {
   return (val > mid)?(val - mid) : -(mid - val);
+}
+
+//ffb is: 255..128<>127..1
+//output: -128..0<L R>1..127
+int normal_ffb3 (int val)
+{
+  return get_cmap(val, 255, 0, -128, 128);
 }
 
 unsigned long get_millis ()

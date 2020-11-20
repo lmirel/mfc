@@ -123,7 +123,7 @@ void terminate (int sig)
 {
   _done = 1;
 }
-
+#if 0
 static unsigned int dtime_ms ()
 {
   static unsigned long lms = 0;
@@ -132,7 +132,7 @@ static unsigned int dtime_ms ()
   lms = cms;
   return (unsigned int)ms;
 }
-
+#endif
 unsigned long mtime_get (int reset)
 {
   static unsigned long _tlast = 0;

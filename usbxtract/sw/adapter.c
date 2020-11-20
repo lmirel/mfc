@@ -66,7 +66,7 @@ static int client_init ()
   mfc_si_other.sin_addr.s_addr = htonl(0x7f000001L); //htonl (INADDR_BROADCAST);
   csock = s;
   //prep debug data
-  dpkt.header.type = E_TYPE_DEBUG;
+  dpkt.header.type = E_TYPE_DESCRIPTORS;//converts to PKTT_CTRL in MFC
   dpkt.header.length = 6;
   dpkt.value[0] = (vid >> 8) & 0xff;
   dpkt.value[1] = vid & 0xff;
@@ -76,6 +76,8 @@ static int client_init ()
   dpkt.value[5] = 0;  //ts[1]
   //write debug pkt first
   (void)sendto (csock, (const void *)&dpkt, dpkt.header.length + 2, 0, (struct sockaddr*)&mfc_si_other, sizeof (mfc_si_other));
+  //switch back to debug pkt type
+  dpkt.header.type = E_TYPE_INDEX;
   //
   return s;
 }

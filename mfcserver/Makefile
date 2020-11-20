@@ -14,6 +14,9 @@ LDLIBS += $(foreach library,$(program_LIBRARIES),-l$(library))
 
 .PHONY: all clean distclean
 
+install: $(program_NAME)
+	cp $(program_NAME) /opt/mfc/
+
 all: $(program_NAME)
 
 $(program_NAME): $(program_OBJS)

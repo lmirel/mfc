@@ -10,8 +10,8 @@ OBJECTS := $(patsubst %.c,%.o,$(shell find . -name "*.c"))
 
 all: $(BINS)
 
-usbxtract: $(OBJECTS)
-	cp $(BINS) /opt/mfc/
+usb-xtract: $(OBJECTS)
+#	cp $(BINS) /opt/mfc/
 
 clean:
 	$(RM) $(OBJECTS) $(BINS)

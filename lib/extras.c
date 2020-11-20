@@ -266,6 +266,39 @@ void bcast_close ()
     close (bcast_sock);
 }
 
+// https://stackoverflow.com/questions/2602823/in-c-c-whats-the-simplest-way-to-reverse-the-order-of-bits-in-a-byte
+//Index 1==0b0001 => 0b1000
+//Index 7==0b0111 => 0b1110
+//etc
+// Detailed breakdown of the math
+//  + lookup reverse of bottom nibble
+//  |       + grab bottom nibble
+//  |       |        + move bottom result into top nibble
+//  |       |        |     + combine the bottom and top results
+//  |       |        |     | + lookup reverse of top nibble
+//  |       |        |     | |       + grab top nibble
+//  V       V        V     V V       V
+// (lookup[n&0b1111] << 4) | lookup[n>>4]
+
+unsigned char reverse_char(unsigned char n)
+{
+  static const char lookup[16] = {
+  0x0, 0x8, 0x4, 0xc, 0x2, 0xa, 0x6, 0xe,
+  0x1, 0x9, 0x5, 0xd, 0x3, 0xb, 0x7, 0xf, };
+   // Reverse the top and bottom nibble then swap them.
+   return (lookup[n&0b1111] << 4) | lookup[n>>4];
+}
+
+char count_ones (char byte)
+{
+  static const char lookup [16] =
+  {
+    0, 1, 1, 2, 1, 2, 2, 3,
+    1, 2, 2, 3, 2, 3, 3, 4
+  };
+  return lookup[byte & 0x0F] + lookup[byte >> 4];
+}
+
 long get_map (long x, long in_min, long in_max, long out_min, long out_max)
 {
   return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
@@ -378,21 +411,24 @@ int normal_accel (int val, int max)
 }
 
 //ffb is: 128..255<L R>1..127
+//output: 128..0<>-1..-127
 int normal_ffb (int val, int max)
 {
-  int rv;
-  if (val > 127)
-    rv = max - val;
-  else
-    rv = - val;
-  //
-  return rv;
+  return (val > 127) ? (max - val) : (-val);
 }
 
-//ffb2 is: 128..255<L R>1..127
+//ffb is: 128..255<L R>1..127
+//output: delta from mid: -128..0<L R>1..127
 int normal_ffb2 (int val, int mid)
 {
   return (val > mid)?(val - mid) : -(mid - val);
+}
+
+//ffb is: 255..128<>127..1
+//output: -128..0<L R>1..127
+int normal_ffb3 (int val)
+{
+  return get_cmap(val, 255, 0, -128, 128);
 }
 
 unsigned long get_millis ()
@@ -401,4 +437,14 @@ unsigned long get_millis ()
   //get current time
   clock_gettime (CLOCK_REALTIME, &lts);
   return (lts.tv_sec * 1000L + lts.tv_nsec / 1000000L);
+}
+
+//get delta time since the previous call
+unsigned int dtime_ms ()
+{
+  static unsigned long lms = 0;
+  unsigned long cms = get_millis ();
+  unsigned long ms = cms - lms;
+  lms = cms;
+  return (unsigned int)ms;
 }

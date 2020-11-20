@@ -10,7 +10,7 @@ modification history
                adapted for motion feedback controller
 */
 
-#define MFC_VERSION "0.10.3rc1"
+#define MFC_VERSION "0.10.4d"
 
 /*
   int pkt_type;
@@ -57,6 +57,9 @@ pkt[8] = 0;         //speed
 
 #define MFC_POS_MIN (-10000)
 #define MFC_POS_MAX (10000)
+#define MFC_HPOS_MAX (5000)
+#define MFC_WHL_MAX (32768)
+#define MFC_HWHL_MAX (16384)
 
 //pkt_dof_type
 //in 6DOF mode, all 6 forces are available discretly: wheel, ffb, vibration
@@ -120,10 +123,24 @@ int normal_axis (int val, int max);
 int normal_pedal (int val, int max);
 int normal_brake (int val, int max);
 int normal_accel (int val, int max);
+//ffb is: 128..255<L R>1..127
+//output: 128..0<>-1..-127
 int normal_ffb (int val, int mid);
+//ffb is: 128..255<L R>1..127
+//output: delta from mid: -128..0<L R>1..127
 int normal_ffb2 (int val, int mid);
+//ffb is: 128..255<>1..127
+//output: -128..0<L R>1..127
+int normal_ffb3 (int val);
 
+char count_ones (char byte);
+
+unsigned char reverse_char(unsigned char n);
+//get millis since the Epoch, 1970-01-01 00:00:00 +0000 (UTC)
 unsigned long get_millis ();
+//get delta time since the previous call
+unsigned int dtime_ms ();
+
 void _check_bkey ( char *_bkey, char *_busr);
 // define a type using a typedef so that we can declare the externally
 // visible struct in this include file and then use the same type when

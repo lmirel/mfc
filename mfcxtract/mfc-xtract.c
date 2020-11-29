@@ -20,6 +20,7 @@
 #include <getopt.h>
 
 #include "extras.h"
+#include "ff_decode.h"
 
 #define UDP_MAX_PACKETSIZE  1024
 #define UDP_PORT            20777
@@ -282,36 +283,6 @@ int env_init (int argc, char *argv[])
    * summary configuration
    *
    */
-#if 0
-  //roll and pitch percentage
-  for (int i = 1; i < argc; i++)
-  {
-    if (argv[i][0] == '-')
-      switch (argv[i][1])
-      {
-        case 'd': //device
-          _pdev = argv[i]+2;
-          //set-up the motion processor function
-          for (int j = 0; _procs[j].pdev != NULL; j++)
-          {
-            if (strncmp (_pdev, _procs[j].pdev, 9) == 0)
-            {
-              _p_idx = j;
-              break;
-            }
-          }
-          break;
-        case 'm': //debug
-          _mot++;
-          break;
-        case 't':
-          //open /dev/hidraw0
-          _toyfd = open ("/dev/hidraw0", O_RDONLY | O_NONBLOCK);
-          if (_toyfd > 0)
-            nfds = 2;
-      }
-  }
-  #endif
   //configuration summary
   printf ("\n# ##");
   printf ("\n#MFC extractor client %s", MFC_VERSION);
@@ -606,7 +577,7 @@ int max_accel = 0;
 int pl_roll, pl_pitch = 0;  //entire platform roll/pitch
 //platform acceleration leveling
 int pw_roll, pw_pitch = 0;  //wheel forces
-int pf_roll, pf_pitch = 0, pf_sway = 0, pf_nudge = 0;  //ffb forces
+int pf_roll, pf_rolld, pf_pitch = 0, pf_sway = 0, pf_nudge = 0;  //ffb forces
 int pv_roll = 0;  //vibration forces
 int pv_pitch = 0;
 int pw_heave = 0, pw_heave_dir = 1; //used for heave 'boating' effect
@@ -630,84 +601,9 @@ static int motion_reset (unsigned int mdt)
 
 static int motion_compute (unsigned int mdt)
 {
-  static int sway_flag = 0;
-#if 0
-  //handle network throttle
-  static unsigned long llts = 0;
-  unsigned long clts = get_millis ();
-  unsigned long mdt = clts - llts;
-  static unsigned long mpktt = 0;
-  static unsigned long mpktd = 0;
-  //toy mode?
-  if (_toyfd > 0)
-    _wd = 'F';
-  //process this now or drop?
-  if (1)
-  {
-    static char lprio = 0;
-    //don't process non FFB messages
-    if (_wd == 'U')
-    {
-      if (_odbg > 1)
-        printf ("\n#E:>>>%c%04lums drop", _wd, mdt);
-      return 0;
-    }
-    if (_wd != 'F')
-    {
-      if (_odbg > 2)
-        printf ("\n#w:%c%04lums drop", _wd, mdt);
-      //if we don't get anything for a while, use this for motion
-      if (mdt > 3 * _olat && mdt < 100)
-      {
-        //we force the next FFB message to go anyway
-        lprio = 2;
-        if (_odbg > 1)
-          printf ("\n#w:%c%04lums force motion 1", _wd, mdt);
-#if 0
-#define BOAT_SPD  20
-#define BOAT_AMP  200
-      if (pw_pitch > 32000)
-      {
-        //generate heave 'boating' efect
-        //full accel or brake
-        if (pw_heave_dir)
-          pw_heave += BOAT_SPD;
-        else
-          pw_heave -= BOAT_SPD;
-        //boating boundaries
-        if (pw_heave > BOAT_AMP)
-          pw_heave_dir = 0; //go the other way
-        if (pw_heave < -BOAT_AMP)
-          pw_heave_dir = 1; //go the other way
-        printf ("\n#w:boating at %d", pw_heave);
-        _cpkt[MFC_PIHEAVE] += pw_heave;
-      }
-#endif
-      }
-      else
-        return 0;
-    }
-    //inc total packets
-    mpktt++;
-    //
-    if (mdt >= _olat || lprio || llts == 0)
-    {
-      if (lprio)
-        lprio --;
-      llts = clts;
-      //
-      //printf ("\n#w:%c%04lums force motion 2", _wd, mdt);
-    }
-    else
-    {
-      mpktd++;
-      //drop pkt and return
-      if (_odbg > 1)
-        printf ("\n#w:%c%04lums %ludrop(%lu) (%05d, %05d)", _wd, mdt, mpktd, mpktt, pl_pitch, pl_roll);
-      return 0;
-    }
-  }
-#endif
+  static int sway_flag = 1;
+  int lpw_roll;
+
   /*
   * wheel roll should cap at -16k..+16k
   *
@@ -747,82 +643,54 @@ YAW	Yaw is the heading of the car (north, east, south, west) in [°]         //c
     //printf ("\n#d.pw roll %d", pw_roll);
   }
   else
-    _cpkt[MFC_PIROLL]  = get_cmap (pf_roll, -128, 128, -MFC_HPOS_MAX, MFC_HPOS_MAX);
-  //add steering roll to platform roll?
+    _cpkt[MFC_PIROLL]  = get_cmap (pf_roll, -128, 128, -MFC_POS_MAX, MFC_POS_MAX);
   //printf ("\n#p.roll1 %d", _cpkt[MFC_PIROLL]);
-  _cpkt[MFC_PIROLL] += get_cmap (pw_roll, -MFC_HWHL_MAX/2, MFC_HWHL_MAX/2, -MFC_HPOS_MAX, MFC_HPOS_MAX);
-  //printf ("\n#p.roll2 %d > %d", pw_roll, _cpkt[MFC_PIROLL]);
-#if 1
-  //if we have strong wheel move, also move the platform
-  if (abs (pf_roll > SWAY_CUTOFF))
+  //add steering roll to platform roll
+  //it may clip the FFB data but we still want to FFB to be more present
+#if 1 //disable wheel input for roll
+  lpw_roll = get_cmap (pw_roll, -MFC_HWHL_MAX/2, MFC_HWHL_MAX/2, -MFC_HPOS_MAX/2, MFC_HPOS_MAX/2);
+  if (_cpkt[MFC_PIROLL] > 0)
   {
-    //traction loss also occurs here?!
-    //TODO: maybe check next pf_roll to be close to -1/1
-    pf_nudge = ((pf_roll > 0) ? (pf_roll - SWAY_CUTOFF) : (pf_roll + SWAY_CUTOFF));
-    sway_flag = pf_nudge;
+    if (lpw_roll > 0)
+      _cpkt[MFC_PIROLL] += lpw_roll;
+    else
+      _cpkt[MFC_PIROLL] += -lpw_roll;
+  }
+  else
+  {
+    if (lpw_roll > 0)
+      _cpkt[MFC_PIROLL] += -lpw_roll;
+    else
+      _cpkt[MFC_PIROLL] += lpw_roll;
   }
 #endif
-  //sway logic / traction loss
-  if (pf_sway)
+  //printf ("\n#p.roll2 %d > %d", pw_roll, _cpkt[MFC_PIROLL]);
+  //traction loss when wheel pos command follows wheel pos
+  if (abs (pf_rolld) > 2) 
   {
-    //reduce sway unless we need to grow it
-    //maybe drop more than just 1 unit?
-    //keep in mind that this goes from -127..0..127
-    if (pf_sway > 0)
+    if (pf_sway)
     {
-      pf_sway -= 1;
-      if (pf_sway < 0)
-        pf_sway = 0;
-    }
-    else
-    {
-      pf_sway += 1;
-      if (pf_sway > 0)
-        pf_sway = 0;
-    }
-    printf ("\n#d.sway1 move %d", pf_sway);
-  }
-  //else if (pf_nudge)
-  //{
-  //  pf_sway = get_cmap (pw_roll, -16400, 16400, -64, 64) + pf_nudge;
-  //}
-  //
-  if (sway_flag && abs (pf_roll) <= 1) //traction loss when wheel pos command follows wheel pos
-  {
-    sway_flag = 0;
-    pf_sway = get_cmap (pw_roll, -MFC_HWHL_MAX, MFC_HWHL_MAX, -64, 64);
-    //traction loss: take 1
-    //add traction loss relevant to wheel turn (pw_roll) up to half effect (64)
-    //TODO: make it progressively grow
-    //or
-    if (0)
-    {
-      if (pf_sway > 0)
-      {
-        //increased drift
-        pf_sway += 20;
-        if (pf_sway > 96)
-          pf_sway = 96;
-      }
-      else if (pf_sway < 0)
-      {
-        //increased drift
-        pf_sway -= 20;
-        if (pf_sway < -96)
-          pf_sway = -96;
-      }
-      else
-      {
-        //start based on wheel position
-        pf_sway = get_cmap (pw_roll, -MFC_HWHL_MAX, MFC_HWHL_MAX, -64, 64);
-      }
+      printf ("\n#d.stop TRL %d", pf_sway);
+      sway_flag = 1;
+      pf_sway = 0;
     }
   }
-  if (pf_sway) printf ("\n#d.sway2 move %d", pf_sway);
+  else
+  {
+    if (sway_flag)
+    {
+      sway_flag = 0;
+      //this may clip over the yaw but we want most effect so use 128
+      pf_sway = get_cmap (pw_roll, -MFC_HWHL_MAX, MFC_HWHL_MAX, -128, 128);
+      printf ("\n#d.start TRL on %d with %d", pf_rolld, pf_sway);
+    }
+  }
   //sway move: traction loss and strong ffb
-  _cpkt[MFC_PISWAY]  = get_cmap (pf_sway + pf_nudge, -128, 128, -MFC_HPOS_MAX, MFC_HPOS_MAX);
+  _cpkt[MFC_PISWAY] = get_cmap (pf_sway + pf_nudge, -128, 128, -MFC_HPOS_MAX, MFC_HPOS_MAX);
+  if (_odbg && _cpkt[MFC_PISWAY] > 0)
+    printf ("\n#d.sway %d on TRL on %d with %d", _cpkt[MFC_PISWAY], pf_rolld, pf_sway);
   //steering direction
-  _cpkt[MFC_PIYAW]   = get_cmap (pw_roll, -MFC_HWHL_MAX, MFC_HWHL_MAX, -MFC_POS_MAX, MFC_POS_MAX);
+  _cpkt[MFC_PIYAW]  = get_cmap (pw_roll, -MFC_HWHL_MAX, MFC_HWHL_MAX, -MFC_HPOS_MAX, MFC_HPOS_MAX);
   //
   if (0||_odbg > 1)
     printf ("\n#i.raw roll:% 6d (r: % 5d / s: % 5d) | pitch: % 6d \t(p: % 5d / s: % 5d / h: % 5d)",
@@ -1521,8 +1389,10 @@ int motion_process_fanatec (char *report, int rlen, unsigned long dtime)
     dtime = 4;
   _wd = 'U';
   //ffb wheel pos: ffb roll
-  static int lwpos = 127, cwpos = 127, revs = 0; //wheel center pos default
-  static char max_revs = 0;
+  //static int lwpos = 127, cwpos = 127, revs = 0; //wheel center pos default
+  static int revs = 0;      //wheel center pos default
+  static int rollp = 0;     //previous roll target for computing roll delta used in traction loss
+  static char max_revs = 0; //overrev jolt and rev-based pitch
   //max revs
   if (revs == 9)
   {
@@ -1545,155 +1415,107 @@ int motion_process_fanatec (char *report, int rlen, unsigned long dtime)
     {
       //
       _wd = 'F';
-      if (memcmp ((const void *) (report + 2), (const void *) (ffb_digits + 2), 5) == 0)
+      //+FFB command decode
+      char *ffbdata = report + 4;
+      if (_cap&CAP_FFB || _odbg)
+        ff_lg_decode_command ((const unsigned char *)ffbdata);
+      //uses almost identical message format as Logitech
+      if(ffbdata[0] != FF_LG_CMD_EXTENDED_COMMAND)
       {
-        //nothing to do here: digits
-        _wd = 'U';
-      }
-      else if (memcmp ((const void *) (report + 2), (const void *) (ffb_lights2 + 2), 4) == 0)
-      {
-        _wd = 'U';
-        //nothing to do here: lights
-        revs = count_ones(report[6]) + (report[7] & 0x01);
-        //printf ("\n#d.rev2 level %02x %02x/%d", report[6], report[7], revs);
-        if (0||_odbg)
+        unsigned char cmd = ffbdata[0] & FF_LG_CMD_MASK;
+        switch(cmd)
         {
-          printf ("\n#w!FFB@%04lu: ", dtime);
-          for (int i = 0; i < rlen; i++)
-            printf ("%02x ", report[i]);
-        }
-        //pw_pitch = get_cmap ((long)revs, 0, 255, 0, MFC_HWHL_MAX);
-      }
-      else if (memcmp ((const void *) (report + 2), (const void *) (ffb_lights + 2), 5) == 0)
-      {
-        _wd = 'W'; //overwrite to wheel to avoid movement during standstill
-        //lights: process max revs led
-        //#d.rev level 00/0
-        //#d.rev level 80/1
-        //#d.rev level c0/3
-        //#d.rev level e0/7
-        //#d.rev level f0/15
-        //#d.rev level f8/31
-        //#d.rev level fc/63
-        //#d.rev level fe/127
-        //#d.rev level ff/255
-#if 0
-        revs = (int)count_ones((unsigned char)report[8]) + (report[7] & 0x01);
-        if (revs)
-        {
-          printf ("\n#d.rev1 level %02x %02x/%d", report[8], report[7], revs);
-          if (1||_odbg)
+          case FF_LG_CMD_DOWNLOAD:
+          case FF_LG_CMD_DOWNLOAD_AND_PLAY:
+          case FF_LG_CMD_PLAY:
+          case FF_LG_CMD_STOP:
+          case FF_LG_CMD_REFRESH_FORCE:
           {
-            printf ("\n#w!FFB@%04lu: ", dtime);
-            for (int i = 0; i < rlen; i++)
-              printf ("%02x ", report[i]);
+            //printf("\n#i:convert command %s", ff_lg_get_cmd_name(cmd));
+            if (cmd == FF_LG_CMD_STOP)
+            {
+              //should align/reset the platform now
+              printf("\n#w:reset platform on %s", ff_lg_get_cmd_name(cmd));
+              pf_roll = 0;
+              rollp = 0;
+              pf_rolld = 0;
+            }
+            else
+            {
+              //printf("\n#w:process force for %s", ff_lg_get_cmd_name(cmd));
+              s_ff_lg_command * force = (s_ff_lg_command *)(ffbdata + 1);
+              //process each force type
+              switch (force->force_type)
+              {
+                case FF_LG_FTYPE_CONSTANT:
+                {
+                  //whlpos = force->parameters[0];
+                  break;
+                }
+                case FF_LG_FTYPE_VARIABLE:
+                {
+                  //whlpos = force->parameters[0];
+                  //platform roll is given by this value: left> FF..80,7F..00 <right
+                  //80 and 7F are used for 0 roll - use only ~80% of the range for more immersiveness?!
+                  //pf_roll = get_cmap(force->parameters[0], 0xff, 0x00, -128, 128);
+                  pf_roll = get_cmap(force->parameters[0], 0xe0, 0x20, -128, 128);
+                  pf_rolld = pf_roll - rollp;
+                  if (_odbg) printf ("\n#d.ffb roll %02x > %d delta %d prev %d", force->parameters[0], pf_roll, pf_rolld, rollp);
+                  rollp = pf_roll;  //reset prev roll
+                  break;
+                }
+                case FF_LG_FTYPE_SPRING:
+                case FF_LG_FTYPE_HIGH_RESOLUTION_SPRING:
+                {
+                  if (1||_odbg) printf ("\n#unused SPRING %02x %02x %02x %02x", force->parameters[0], force->parameters[1], force->parameters[2], force->parameters[3]);
+                  break;
+                }
+                case FF_LG_FTYPE_DAMPER:
+                case FF_LG_FTYPE_HIGH_RESOLUTION_DAMPER:
+                {
+                  if (1||_odbg) printf ("\n#unused DAMPER %02x %02x %02x %02x", force->parameters[0], force->parameters[1], force->parameters[2], force->parameters[3]);
+                  break;
+                }
+                default:
+                {
+                  printf ("\n#w:skip force type: %s", ff_lg_get_ftype_name(force->force_type));
+                }
+              }//force type
+            }//command
+            break;
+          }
+          case FF_LG_CMD_DEFAULT_SPRING_ON:
+          case FF_LG_CMD_DEFAULT_SPRING_OFF:
+          {
+            if (1||_odbg) printf("\n#w:skip command %s", ff_lg_get_cmd_name(cmd));
+            break;
+          }
+          default:
+          {
+            if (_odbg) printf("\n#w:skipping unsupported command %s", ff_lg_get_cmd_name(cmd));
+          }
+        }//cmd
+      }
+      else    //extended command
+      {
+        switch(ffbdata[1])
+        {
+          case FF_FT_EXT_CMD_RPM_LEDS:
+          {
+            s_ff_lg_command * leds = (s_ff_lg_command *)(ffbdata + 1);
+            //revs = count_ones(report[6]) + (report[7] & 0x01);
+            revs = count_ones(leds->parameters[0] + (leds->parameters[1] & 0x01));
+            if (_odbg) printf ("\n#d.rev2 level %d %02x %02x %02x %02x", revs, leds->parameters[0], leds->parameters[1], leds->parameters[2], leds->parameters[3]);
+            break;
+          }
+          default:
+          {
+            if (_odbg) printf("\n#w:skip ext command %s", ff_lg_get_ext_cmd_name(ffbdata[1]));
           }
         }
-        //use revs level to pitch the platform: raise or dive
-        pw_pitch = get_cmap ((long)revs, 0, 255, 0, MFC_WHL_MAX);
-        //
-#endif
+        //process rev leds
       }
-      else if (memcmp ((const void *) (report + 2), (const void *) (ffb_whlvib1 + 2), 4) == 0)
-      {
-        //TODO:vibrations?
-        _wd = 'U';
-        //printf ("\n#d.whlvib %0x", report[6]);
-      }
-      else
-        /*
-        * GT Sport
-        */
-       if (memcmp ((const void *) (report + 2), (const void *) (ffb_whlpos1 + 2), 4) == 0)
-       {
-         /* small values when wheel is turned right
-          * large values when wheel is turned left
-          * - both varies little for small vibs, very much for big vibs
-          */
-         /*
-         * process vibrations
-         */
-         /* wheel ffb position
-         * 128..255 | 0..127
-         */
-         cwpos = report[6];
-         pf_roll = normal_ffb2 (cwpos, lwpos);  //ffb wheel delta
-         //pf_roll = normal_ffb3 (cwpos); //ffb wheel pos
-         //pf_roll = (cwpos > lwpos)? (cwpos - lwpos):-(lwpos - cwpos);
-         if (0||_odbg > 2)
-           printf ("\n#d.WHLPOS1 ffb roll %d / %d / %d", pf_roll, ((int) report[6]),
-               normal_ffb2 (cwpos, lwpos));
-         //
-         lwpos = cwpos;
-         //
-       }
-      /*
-      * Dirt Rally
-      */
-     else
-       if (memcmp ((const void *) (report), (const void *) (ffb_whlpos2), 8) == 0)
-     {
-       /* small values when wheel is turned right
-        * large values when wheel is turned left
-        * - both varies little for small vibs, very much for big vibs
-        */
-       /*
-       * process vibrations
-       */
-       /* wheel ffb position
-       * 128..255 | 0..127
-       */
-       cwpos = report[8];
-       pf_roll = normal_ffb2 (cwpos, lwpos);
-       //pf_roll = (cwpos > lwpos)? (cwpos - lwpos):-(lwpos - cwpos);
-       lwpos = cwpos;
-       if (0||_odbg > 2)
-         printf ("\n#d.WHLPOS2 ffb roll %d / %d", pf_roll, ((int) report[8]));
-       //
-     }
-#if 0
-      else
-        /*
-         * Dirt4
-#W:***pkt type: 0xee: ee 40 48 01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-#W:***pkt type: 0xee: ee 40 3a 05 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-#W:***pkt type: 0xee: ee 40 38 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-#W:***pkt type: 0xee: ee 40 38 03 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-#W:***pkt type: 0xee: ee 40 38 11 ff ff 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-#W:***pkt type: 0xee: ee 40 35 60 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-#W:***pkt type: 0xee: ee 40 31 02 08 40 10 27 00 ff ff 50 00 60 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-         * WRC5/6, Dirt Rally
-         * inspect wheel vibration data
-FFB@002ms: 0002 01 ee 40 3d 4a 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-FFB@002ms: 0002 01 ee 40 3d 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-FFB@002ms: 0002 01 ee 40 3d 12 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-FFB@002ms: 0002 01 ee 40 3d 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-FFB@002ms: 0002 01 ee 40 3d 0a 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-FFB@002ms: 0002 01 ee 40 3d 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-         */
-      if (memcmp ((const void *) (report + 2), (const void *) (ffb_wrc5 + 2), 1) == 0)
-      {
-        /* small values when wheel is turned right
-         * large values when wheel is turned left
-         * - both varies little for small vibs, very much for big vibs
-         */
-        pf_roll = - normal_ffb (((int) report[3]), 0x0ff);
-        if (_odbg > 2)
-          printf ("\n#i:wrc/drally ffb roll %d / %d", pf_roll, ((int) report[3]));
-      }
-#endif
-      else
-      {
-        //unhandled
-        _wd = 'U';
-        if (_odbg)
-        {
-          printf ("\n#w!FFB@%04lu: ", dtime);
-          for (int i = 0; i < rlen; i++)
-            printf ("%02x ", report[i]);
-        }
-        return 0;
-      }
+
     } // FFB data
       break;
       /*

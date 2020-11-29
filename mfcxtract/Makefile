@@ -1,5 +1,5 @@
 program_NAME := mfc-xtract
-program_C_SRCS := mfc-xtract.c ../lib/extras.c
+program_C_SRCS := mfc-xtract.c ../lib/extras.c ../lib/ff_decode.c
 program_CXX_SRCS := $(wildcard *.cpp)
 program_C_OBJS := ${program_C_SRCS:.c=.o}
 program_CXX_OBJS := ${program_CXX_SRCS:.cpp=.o}

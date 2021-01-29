@@ -56,7 +56,7 @@ static unsigned int dtime2_ms ()
 
 static int motion_reset (unsigned int mdt);
 static int motion_compute (unsigned int mdt);
-static int get_accel_pitch (int lpacc);
+static int accel_pitch_get(int acc, int brk, int revs);
 
 int motion_process_dummy (char *report, int retval, unsigned long mtime);
 int motion_process_thrustmaster (char *report, int retval, unsigned long mtime);
@@ -306,11 +306,20 @@ int env_init (int argc, char *argv[])
   return 1;
 }
 
+int pw_acc = 0, pw_brk = 0, pw_revs = 0;
+static int extractor_update()
+{
+  //update extractor logic as needed
+  accel_pitch_get(pw_acc, pw_brk, pw_revs);
+  //
+  return 0;
+}
+
 int main (int argc, char **argv, char **envp)
 {
   struct pollfd fdset[3];
   int nfds = 1;
-  int timeout, rc;
+  int rc;//, timeout;
   int lport = UDP_PORT;
   lport = 64402;
   //
@@ -338,7 +347,7 @@ int main (int argc, char **argv, char **envp)
   }
   //
 #define POLL_TIMEOUT 5000
-  timeout = POLL_TIMEOUT;
+  //timeout = POLL_TIMEOUT;
 
 #if 0
   //uptime
@@ -391,7 +400,7 @@ int main (int argc, char **argv, char **envp)
   int ppkt = 1;
   char packetBuffer[UDP_MAX_PACKETSIZE];
   //
-  int rlen = 0;
+  int rlen = 0, tmoknt = 0;
   int ndts = -1, ldts = dtime_ms ();
   int ppid = 0, vvid = 0;
   //motion measurements
@@ -411,7 +420,7 @@ int main (int argc, char **argv, char **envp)
       fdset[1].fd = _toyfd;
       fdset[1].events = POLLIN;
     }
-    rc = poll (fdset, nfds, timeout);
+    rc = poll (fdset, nfds, 5); //timeout every 5 millis
 
     if (rc < 0) 
     {
@@ -422,9 +431,16 @@ int main (int argc, char **argv, char **envp)
     //timeout
     if (rc == 0)
     {
-      printf(".");
-      fflush (stdout);
-      sleep (1);
+      //called every 5 millis
+      extractor_update ();
+      tmoknt++;
+      if (tmoknt >= 1000)
+      {
+        printf(".");
+        fflush (stdout);
+        tmoknt = 0;
+      }
+      //sleep (1);
     }
     //take the time
     ms_now = (unsigned int)get_millis();
@@ -585,6 +601,142 @@ int lpacc, lpbrk = 0;       //local values for accel+brake for axis combo
 char _wd = 'W'; //wheel data source
 int vib_k = 0;
 int _olat  = 10;    //network latency/frequency
+
+#if 0
+static int get_accel_pitch (int lpacc)
+{
+  static int c_accel = 0;
+  static const int pf_accspd = 350; //[50 .. 500]
+  //deal with acceleration platform leveling
+  if (max_accel == lpacc) //constant acceleration
+  {
+    //fprintf (stderr, "\n#i:1 lpacc %d \t max_acc %d \t c_acc %d", lpacc, max_accel, c_accel);
+    c_accel -= 20;//this needs to drop / ramp down regardless of the steering movement
+    //
+    if (c_accel < 0)
+      c_accel = 0;
+    //fprintf (stderr, "\n#i:2 lpacc %d \t max_acc %d \t c_acc %d", lpacc, max_accel, c_accel);
+  }
+  else if (max_accel < lpacc)//accelerate || max_accel > lpacc/*deccelerate*/)
+  {
+    c_accel += pf_accspd;//this needs to grow / ramp up regardless of the steering movement
+    if (c_accel > lpacc)
+      c_accel = lpacc;
+    max_accel = c_accel;
+  }
+  else
+  {
+    max_accel = lpacc;
+    c_accel = lpacc;
+    //fprintf (stderr, "\n#i:3 lpacc %d \t max_acc %d \t c_acc %d", lpacc, max_accel, c_accel);
+  }
+  //
+  return c_accel + pf_accspd; //it should stay nose-up while accelerating
+}
+#endif
+int acc_map[][2] = {
+//knt,pitch level%
+  {0, 0},
+  {1, 5},
+  {2, 10},
+  {3, 20},
+  {4, 20},
+  {5, 30},
+  {6, 50},
+  {7, 70},
+  {8, 80},
+  {9, 90},
+  {10, 100},
+  {11, 100},
+  {12, 80},
+  {13, 60},
+  {14, 50},
+  {15, 40},
+};
+#define ACC_MAPIDX_MAX 15
+#define ACC_MAPKNT_MAX 500
+
+//implement an accel curve based on acc level
+//  and the number of times this is called
+static int accel_pitch_get(int acc, int brk, int revs)
+{
+  static int kntr = 0;
+  static int ptch = 0;
+  //
+  static int lidx = 0;  //last used index
+  static int fdt = (ACC_MAPKNT_MAX + ACC_MAPIDX_MAX) / ACC_MAPIDX_MAX;
+  //static int lacc = 0;  //last accel value so we know if it was going up or down
+  pw_acc = acc; pw_brk = brk; pw_revs = revs;
+  //
+  if (acc <= 0)
+  {
+    ptch = 0;
+    //
+    kntr = 0;
+    lidx = 0;
+    //lacc = 0;
+  }
+  //when brake is pressed
+  if (brk < -5)
+  {
+    ptch = brk;  //cut off accel if brake pressed: goes to -MFC_WHL_MAX
+    //reset all other metrics
+    kntr = 0;
+    lidx = 0;
+    //lacc = 0;
+  }
+  else if (acc)
+  {
+    //pitch goes from 0 to MFC_WHL_MAX (32768)
+    //our timeline is 100 iterations: kntr < 100
+    //get accel map index
+    //lidx = get_cmap (kntr++, 0, ACC_MAPKNT_MAX, 0, ACC_MAPIDX_MAX);
+    lidx = kntr / fdt;
+    if (lidx > ACC_MAPIDX_MAX)
+      lidx = ACC_MAPIDX_MAX;
+    //get pitch value from accel map: acc itself goes to MFC_WHL_MAX (32768)
+    ptch = acc * acc_map[lidx][1] / 100;
+    //add the discreet value in the interval if it is growing
+    //e.g. we're at 20% and going to 25%
+    if (lidx < ACC_MAPIDX_MAX)
+    {
+      int ptchn = acc_map[lidx + 1][1] * acc / 100;
+      if (0)
+      {
+        printf("\n#d.kntr %d fdt %d mod %d from %d (%d) to %d (%d)", kntr, fdt,
+          kntr % fdt, ptch, acc_map[lidx][1], ptchn, acc_map[lidx + 1][1]);
+      }
+      if (ptch <= ptchn)
+        ptch = get_cmap(kntr % fdt, 0, fdt, ptch, ptchn);
+      else
+        ptch = get_cmap(kntr % fdt, fdt, 0, ptchn, ptch);
+      #if 0
+      int dpt = (acc_map[lidx + 1][1] * MFC_WHL_MAX / 100) - ptch;
+      //going up or down?
+      if (dpt > 0)
+      {
+        ptch += get_cmap(kntr % fdt, 0, fdt, 0, dpt);
+      }
+      else
+      {
+        ptch -= get_cmap(kntr % fdt, 0, fdt, 0, dpt);
+      }
+      #endif
+    }
+    if (0 && lidx <= ACC_MAPIDX_MAX)
+    {
+      printf("\n#d.acc map %didx %d%%map %dacc %d", lidx, acc_map[lidx][1], acc, ptch);
+    }
+    //add revs to nose pitch
+    if (revs == 9)
+    {
+      ptch -= (kntr % 2) * 2500;
+    }
+    //
+    kntr++;
+  }
+  return ptch;
+}
 
 static int motion_reset (unsigned int mdt)
 {
@@ -995,14 +1147,17 @@ int motion_process_logitech (char *report, int rlen, unsigned long dtime)
         if (_odbg > 2)
           printf ("\n#RAW whl %d acc %d brk %d", pw_roll, lpacc, lpbrk);
         //
+        #if 0
         if (lpbrk < -5)
           pw_pitch = lpbrk;  //cut off accel if brake pressed
         else
         {
           //
-          pw_pitch = get_accel_pitch (lpacc); //it should stay nose-up while accelerating
+          pw_pitch = accel_pitch_get(lpacc, lpbrk, 0); //get_accel_pitch (lpacc); //it should stay nose-up while accelerating
         }
         //pw_pitch = lpbrk; //accel-brake
+        #endif
+        pw_pitch = accel_pitch_get(lpacc, lpbrk, 0); //get_accel_pitch (lpacc); //it should stay nose-up while accelerating
         //
         //gear shifting: only when accelerating or braking
         if (lpbrk || lpacc)
@@ -1351,36 +1506,6 @@ unsigned char ffb_whlpos2[] =
 unsigned char ffb_whlvib1[] =
  //<type>,<len>,  03    30    11    0c    FF    00    FF    00    ff>
   { 0x07, 0x09, 0x03, 0x30, 0x11, 0x0c, 0xFF, 0x00, 0xFF, 0x00, 0xff };
-static int get_accel_pitch (int lpacc)
-{
-  static int c_accel = 0;
-  static const int pf_accspd = 350; //[50 .. 500]
-  //deal with acceleration platform leveling
-  if (max_accel == lpacc) //constant acceleration
-  {
-    //fprintf (stderr, "\n#i:1 lpacc %d \t max_acc %d \t c_acc %d", lpacc, max_accel, c_accel);
-    c_accel -= 20;//this needs to drop / ramp down regardless of the steering movement
-    //
-    if (c_accel < 0)
-      c_accel = 0;
-    //fprintf (stderr, "\n#i:2 lpacc %d \t max_acc %d \t c_acc %d", lpacc, max_accel, c_accel);
-  }
-  else if (max_accel < lpacc)//accelerate || max_accel > lpacc/*deccelerate*/)
-  {
-    c_accel += pf_accspd;//this needs to grow / ramp up regardless of the steering movement
-    if (c_accel > lpacc)
-      c_accel = lpacc;
-    max_accel = c_accel;
-  }
-  else
-  {
-    max_accel = lpacc;
-    c_accel = lpacc;
-    //fprintf (stderr, "\n#i:3 lpacc %d \t max_acc %d \t c_acc %d", lpacc, max_accel, c_accel);
-  }
-  //
-  return c_accel + pf_accspd; //it should stay nose-up while accelerating
-}
 
 int motion_process_fanatec (char *report, int rlen, unsigned long dtime)
 {
@@ -1392,6 +1517,7 @@ int motion_process_fanatec (char *report, int rlen, unsigned long dtime)
   //static int lwpos = 127, cwpos = 127, revs = 0; //wheel center pos default
   static int revs = 0;      //wheel center pos default
   static int rollp = 0;     //previous roll target for computing roll delta used in traction loss
+#if 0
   static char max_revs = 0; //overrev jolt and rev-based pitch
   //max revs
   if (revs == 9)
@@ -1402,6 +1528,7 @@ int motion_process_fanatec (char *report, int rlen, unsigned long dtime)
     else
       pf_pitch = 0;
   }
+#endif
   //
   switch ((char) report[0])
   {
@@ -1431,6 +1558,11 @@ int motion_process_fanatec (char *report, int rlen, unsigned long dtime)
           case FF_LG_CMD_STOP:
           case FF_LG_CMD_REFRESH_FORCE:
           {
+            if (0)
+            {
+              printf("\n#w:");
+              ff_lg_decode_command ((const unsigned char *)ffbdata);
+            }
             //printf("\n#i:convert command %s", ff_lg_get_cmd_name(cmd));
             if (cmd == FF_LG_CMD_STOP)
             {
@@ -1467,13 +1599,13 @@ int motion_process_fanatec (char *report, int rlen, unsigned long dtime)
                 case FF_LG_FTYPE_SPRING:
                 case FF_LG_FTYPE_HIGH_RESOLUTION_SPRING:
                 {
-                  if (1||_odbg) printf ("\n#unused SPRING %02x %02x %02x %02x", force->parameters[0], force->parameters[1], force->parameters[2], force->parameters[3]);
+                  if (_odbg) printf ("\n#unused SPRING %02x %02x %02x %02x %02x", force->parameters[0], force->parameters[1], force->parameters[2], force->parameters[3], force->parameters[4]);
                   break;
                 }
                 case FF_LG_FTYPE_DAMPER:
                 case FF_LG_FTYPE_HIGH_RESOLUTION_DAMPER:
                 {
-                  if (1||_odbg) printf ("\n#unused DAMPER %02x %02x %02x %02x", force->parameters[0], force->parameters[1], force->parameters[2], force->parameters[3]);
+                  if (_odbg) printf ("\n#unused DAMPER %02x %02x %02x %02x %02x", force->parameters[0], force->parameters[1], force->parameters[2], force->parameters[3], force->parameters[4]);
                   break;
                 }
                 default:
@@ -1483,11 +1615,16 @@ int motion_process_fanatec (char *report, int rlen, unsigned long dtime)
               }//force type
             }//command
             break;
-          }
+          }//DL, PLAY, STOP, REFRESH
           case FF_LG_CMD_DEFAULT_SPRING_ON:
           case FF_LG_CMD_DEFAULT_SPRING_OFF:
           {
-            if (1||_odbg) printf("\n#w:skip command %s", ff_lg_get_cmd_name(cmd));
+            if (0)
+            {
+              printf("\n#w:");
+              ff_lg_decode_command ((const unsigned char *)ffbdata);
+            }
+            if (_odbg) printf("\n#w:skip command %s", ff_lg_get_cmd_name(cmd));
             break;
           }
           default:
@@ -1569,6 +1706,10 @@ int motion_process_fanatec (char *report, int rlen, unsigned long dtime)
       if (_odbg > 2)
         printf ("\n#RAW whl %d acc %d brk %d", pw_roll, lpacc, lpbrk);
       //
+      //static int accel_pitch_get(int acc, int brk, int revs)
+      pw_pitch = accel_pitch_get(lpacc, lpbrk, revs);
+      //
+#if 0
       if (lpbrk < -5)
         pw_pitch = lpbrk;  //cut off accel if brake pressed
       else
@@ -1578,6 +1719,7 @@ int motion_process_fanatec (char *report, int rlen, unsigned long dtime)
         pw_pitch += get_cmap ((long)revs, 0, 9, 0, MFC_HWHL_MAX);
       }
       //pw_pitch = lpbrk; //accel-brake
+#endif
       //
       #if 1 //disable shifting motion, leave it for the game to deal with it
       //gear shifting: only when accelerating or braking
@@ -2086,6 +2228,7 @@ FFB@00003ms: ee 40 35 20 00 06 06 f1 ff 00 00 14 14 00 00 00 00 00 00 00 00 00 0
       //pw_pitch = normal_axis (get_short (report, 49), 0x0ffff); //from brake
       lpbrk = normal_brake (get_short (report, 49), 0x0ffff);
       lpacc = normal_accel (get_short (report, 47), 0x0ffff);
+      #if 0
       if (lpbrk < -5)
         pw_pitch = lpbrk;  //cut off accel if brake pressed
       else
@@ -2094,6 +2237,8 @@ FFB@00003ms: ee 40 35 20 00 06 06 f1 ff 00 00 14 14 00 00 00 00 00 00 00 00 00 0
         pw_pitch = get_accel_pitch(lpacc); //it should stay nose-up while accelerating
       }
       //pw_pitch = lpbrk; //accel-brake
+      #endif
+      pw_pitch = accel_pitch_get(lpacc, lpbrk, 0);
       //
       if (_odbg > 2)
         printf ("\n#RAW whl %d acc %d brk %d", get_short (report, 45), get_short (report, 47), get_short (report, 49));
